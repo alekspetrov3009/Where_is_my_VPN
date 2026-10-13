@@ -30,10 +30,23 @@ SPEED_URL = f"https://speed.cloudflare.com/__down?bytes={SPEED_BYTES}"
 # Компромисс: до 2 параллельных замеров.
 SPEED_LOCK = asyncio.Semaphore(2)
 
-# Проверка сервиса: только страница ChatGPT.
+# Проверка сервисов через туннель: профиль блокировок, а не один флаг.
+# gpt — исторический таргет и обязательный (REQUIRED_SERVICES): именно он
+# определяет секцию «Сервисы» на публичной странице. Остальные таргеты
+# добавляют к записи пула профиль доступности (что ещё открывается через
+# этот сервер) и НЕ сужают выдачу: сервер без YouTube остаётся рабочим.
 SERVICE_TARGETS = {
     "gpt": ("https://chatgpt.com/", (b"chatgpt", b"openai")),
+    "yt": ("https://www.youtube.com/", (b"youtube",)),
+    "tg": ("https://web.telegram.org/", (b"telegram",)),
+    "ig": ("https://www.instagram.com/", (b"instagram",)),
 }
+
+# Подмножество SERVICE_TARGETS, обязательное для секции «Сервисы».
+# Расширение SERVICE_TARGETS не должно опустошать таблицу: сервер, у которого
+# открыт ChatGPT, но закрыт Instagram, остаётся пригодным для работы.
+REQUIRED_SERVICES = ("gpt",)
+
 SERVICE_BODY_LIMIT = 512 * 1024
 
 from curl_cffi import requests as browser_requests  # noqa: E402
@@ -55,11 +68,56 @@ def _classify_error(err):
         return "tls/handshake"
     if "refused" in e or "unreachable" in e or "reset by peer" in e or "network is unreachable" in e:
         return "connection_refused/unreachable"
+    # Перехват DPI идёт раньше общей ветки "blocked": для статистики важно
+    # отличать подмену ответа от прочих блокировок.
+    if "перехват" in e or "заглушк" in e:
+        return "intercepted"
     if "blocked" in e or "forbidden" in e or "filter" in e:
         return "blocked"
     if "не удалось распарсить" in e or "не поддерживается" in e:
         return "unparsable"
     return "other"
+
+
+# Признаки подмены ответа DPI/РКН: тестовый адрес обязан отвечать пустым телом
+# (generate_204), поэтому ЛЮБОЕ непустое тело — уже аномалия. Маркеры ниже
+# отделяют осмысленную заглушку от прочего мусора, чтобы в отчёте было видно,
+# что именно вернул провайдер.
+INTERCEPTION_MARKERS = (
+    b"blocked", b"access denied", b"zapret", b"roskomnadzor", b"rkn.gov.ru",
+    b"captive", b"<title>403", b"<title>451", b"warning.rt.ru", b"blocklist",
+    b"unavailable for legal reasons", b"restricted", b"not available in your country",
+    b"blackhole", b"connection reset by peer",
+)
+# Сколько байт тела читаем для анализа: заглушки короткие, полные страницы
+# ошибок читать целиком незачем.
+_INTERCEPTION_BODY_LIMIT = 8192
+
+
+def _detect_interception(body):
+    """Определяет подмену ответа тестового адреса (DPI/РКН/captive portal).
+
+    Возвращает короткое описание вида "перехват: <маркер>" либо None, если
+    явных признаков заглушки нет. Вызывается только когда тело непустое:
+    корректный ответ generate_204 всегда пуст.
+    """
+    sample = (body or b"")[:_INTERCEPTION_BODY_LIMIT].lower()
+    if not sample:
+        return None
+    for marker in INTERCEPTION_MARKERS:
+        if marker in sample:
+            return f"перехват ответа: обнаружена заглушка ({marker.decode('ascii', 'replace')})"
+    # Непустое тело без известных маркеров: либо HTML-страница провайдера,
+    # либо captive portal. Пробуем достать <title> для понятного отчёта.
+    if sample.lstrip().startswith((b"<!doctype html", b"<html")):
+        title = None
+        start = sample.find(b"<title>")
+        if start != -1:
+            end = sample.find(b"</title>", start)
+            if end != -1:
+                title = sample[start + 7:end].strip()[:80].decode("utf-8", "replace")
+        return f"перехват ответа: HTML-страница вместо пустого тела" + (f" ({title})" if title else "")
+    return None
 
 
 def _allocate_local_port():
@@ -169,6 +227,12 @@ async def _probe_outbound(singbox_path, tag, uri, outbound_config, fast=False):
                     # означает лишь скачивание тела, включая страницы блокировки.
                     if not stdout.strip():
                         return tag, uri, True, latency_ms
+                    # Непустое тело: отличаем подмену ответа DPI от прочего
+                    # мусора. Заглушка — детерминированный признак, что канал
+                    # перехвачен, поэтому резервный URL уже не поможет.
+                    interception = _detect_interception(stdout)
+                    if interception:
+                        return tag, uri, False, interception
                     last_err_this_attempt = "Неожиданный ответ тестового адреса (ожидалось пустое тело)"
                     process = None
                     continue
@@ -237,8 +301,6 @@ async def probe_uri_standalone(singbox_path, tag, uri, fast=False, probe=None):
     """
     if probe is None:
         probe = _probe_outbound
-    if uri.startswith("tuic://"):
-        return False, "Протокол tuic:// не поддерживается (парсер отсутствует)"
     outbound = parse_uri_to_singbox_outbound(uri, tag)
     if not outbound:
         return False, "Не удалось распарсить"
@@ -369,14 +431,20 @@ async def probe_services(singbox_path, uri, measure_speed=False, speed_only=Fals
                 if time.monotonic() >= deadline:
                     raise TimeoutError("sing-box не запустил прокси за 5 секунд")
                 await asyncio.sleep(0.1)
-        for name, (url, markers) in SERVICE_TARGETS.items():
-            if not speed_only:
-                task = asyncio.create_task(asyncio.to_thread(check_service_page, port, url, markers))
-                try:
+        # Таргеты проверяются параллельно: последовательный обход при четырёх
+        # сервисах растянул бы проверку одного сервера до 4*SERVICE_TIMEOUT.
+        if not speed_only:
+            probes = {name: asyncio.create_task(
+                asyncio.to_thread(check_service_page, port, url, markers))
+                for name, (url, markers) in SERVICE_TARGETS.items()}
+            try:
+                for name, task in probes.items():
                     results[name] = await asyncio.shield(task)
-                except asyncio.CancelledError:
-                    await task
-                    raise
+            except asyncio.CancelledError:
+                # Дожидаемся всех потоков до остановки sing-box: иначе они
+                # обратятся к уже закрытому прокси-порту.
+                await asyncio.gather(*probes.values(), return_exceptions=True)
+                raise
         if measure_speed:
             async with SPEED_LOCK:
                 task = asyncio.create_task(asyncio.to_thread(measure_download_speed, port))

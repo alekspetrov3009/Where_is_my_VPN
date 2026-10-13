@@ -21,11 +21,11 @@
 
 - `app.py` — FastAPI endpoints, check orchestration (`run_check_core` / `_run_check_core`), maintenance loops, global state (`public_data`, `auto_update_settings`, `CHECK_STATS`).
 - `paths.py` — exe-aware path resolution (`APP_DIR`, `get_resource_path()`); in Nuitka --onefile mode HTML/bin/config resolve next to `sys.executable`.
-- `config_parser.py` — URI → sing-box outbound parsers, one function per protocol (vless/trojan/ss/vmess/hysteria2); `tuic://` is collected but has no parser and always lands in "unparsable". Owns `URI_PREFIXES`.
+- `config_parser.py` — URI → sing-box outbound parsers, one function per protocol (vless/trojan/ss/vmess/hysteria2/tuic); owns `URI_PREFIXES`. hysteria2 parses `obfs`/`obfs-password` (salamander) — without it a server with obfuscation silently fails. tuic parses `congestion_control`, `udp_relay_mode`, `alpn`.
 - `storage.py` — atomic persistence: `.singbox_config.json`, pool (`save_pool(public_data, pool_file)`), per-pool checkpoints (`load_check_schedule(schedule_file)`). Paths are parameters so tests can patch `app.POOL_FILE` / `app.SCHEDULE_FILE`.
 - `singbox_manager.py` — find/validate/download sing-box. `run_singbox_version()` is the single validation point (was 4 copies). `find_singbox(get_saved_path)` takes the config reader as a callback.
 - `catalog.py` — source discovery (GitHub API + `FALLBACK_LISTS`), daily catalog with conditional GETs, dedupe by `canonical_endpoint()`, `assemble_catalog()`. Owns `urlopen_insecure()` (unverified SSL for lists/GitHub API only — corporate MITM workaround; binary downloads stay verified; do NOT re-enable the global `ssl._create_default_https_context` override).
-- `prober.py` — sing-box probing: `_probe_outbound` (OS-allocated ports via `bind 127.0.0.1:0`, no pre-scan), `probe_uri_standalone` (2 independent probes, `probe=` injectable), `probe_services` (ChatGPT via curl_cffi Chrome TLS + speed measurement), all check tuning constants.
+- `prober.py` — sing-box probing: `_probe_outbound` (OS-allocated ports via `bind 127.0.0.1:0`, no pre-scan), `probe_uri_standalone` (2 independent probes, `probe=` injectable), `probe_services` (service targets via curl_cffi Chrome TLS + speed measurement), all check tuning constants. `_detect_interception()` rejects DPI/RKN stub responses: the test URL must return an empty body (generate_204), so any non-empty body is analysed for stub markers and reported as `intercepted` instead of a working server. `SERVICE_TARGETS` (gpt/yt/tg/ig) build a per-server block profile; `REQUIRED_SERVICES` (`gpt`) is the subset that gates the public "Services" table — extra targets must NOT be added to it or the table empties. Targets probe in parallel.
 - `check_scheduler.py` — pure pool math (`build_pool_plan` / `interleave_ranges`), unchanged.
 - Test-compat layer in `app.py`: thin wrappers (`probe_uri_standalone`, `measure_download_speed`, `get_source_catalog`, `load_pool`, `save_pool`, `find_singbox`) forward to module implementations while reading `app.*` attributes at call time, so `patch.object(app, ...)` keeps working. `app.SOURCE_CATALOG` is synced with `catalog.SOURCE_CATALOG` inside the `get_source_catalog` wrapper.
 - `print()` to stdout is the intentional logging mechanism (portable exe shows console); no `logging` module by design.
@@ -45,7 +45,7 @@
 
 - `python app.py` or `python app.py <port>` (default `8079`). Public page `/`, admin `/vpn-control-panel-x7k9` (`admin/vpn2026`, env-overridable via `VPN_ADMIN_USER`/`VPN_ADMIN_PASSWORD`).
 - Deps: `pip install fastapi uvicorn qrcode pillow curl_cffi` (tkinter from stdlib for the file dialog).
-- Tests: `python -m unittest test_check_scheduling test_validation` (no pytest). Known pre-existing failures in `test_validation.py` (7): tests patch `urllib.request.urlopen` while catalog code calls `urlopen_insecure` — fix tests, not the wrapper.
+- Tests: `python -m unittest test_check_scheduling test_validation test_dpi_hardening` (no pytest). Known pre-existing failures in `test_validation.py` (6 observed; AGENTS previously said 7): tests patch `urllib.request.urlopen` while catalog code calls `urlopen_insecure` — fix tests, not the wrapper. `test_dpi_hardening.py` covers hysteria2 obfs, the tuic parser, the interception detector and the `REQUIRED_SERVICES` gate; its `SchemaValidationTests` shells out to the real `sing-box check` and skips if the binary is absent.
 
 ## Known dead code — do not "fix" blindly
 

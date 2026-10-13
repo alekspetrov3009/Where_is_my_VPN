@@ -1,8 +1,8 @@
 """Парсеры VPN-URI в outbound-конфигурации sing-box.
 
-Поддерживаются vless, trojan, shadowsocks, vmess и hysteria2.
-tuic:// собирается источниками, но парсера нет — такие URI всегда
-попадают в «unparsable» с понятной ошибкой проверки.
+Поддерживаются vless, trojan, shadowsocks, vmess, hysteria2 и tuic.
+hysteria2 разбирается вместе с obfs (salamander), tuic — с congestion_control,
+udp_relay_mode и alpn: без этих параметров рабочие серверы ложно бракуются.
 """
 import base64
 import json
@@ -177,16 +177,63 @@ def _parse_vmess(uri, tag):
 
 
 def _parse_hysteria2(parsed, get_q, tag):
-    """hysteria2://password@host:port?sni=... — TLS всегда включён."""
+    """hysteria2://password@host:port?sni=...&obfs=salamander&obfs-password=... — TLS всегда включён.
+
+    obfs (salamander) критичен для обхода DPI: без него сервер с включённой
+    обфускацией не принимает соединение, и рабочий ключ ложно попадает в
+    «нерабочие». Поддерживаются оба написания параметра: obfs-password и
+    obfs_password (встречаются в разных генераторах ссылок).
+    """
     password = unquote(parsed.username or "") or get_q("password", unquote(parsed.password or ""))
     if not password:
         return None
-    return {
+    outbound = {
         "type": "hysteria2", "tag": tag,
         "server": parsed.hostname, "server_port": parsed.port,
         "password": password,
         "tls": {"enabled": True, "server_name": get_q("sni", parsed.hostname), "insecure": True}
     }
+    obfs_type = get_q("obfs")
+    if obfs_type:
+        obfs_password = get_q("obfs-password") or get_q("obfs_password")
+        # salamander — единственный тип обфускации в sing-box 1.10.x;
+        # неизвестный тип не подставляем, иначе sing-box отвергнет весь конфиг.
+        if obfs_type == "salamander" and obfs_password:
+            outbound["obfs"] = {"type": "salamander", "password": obfs_password}
+    return outbound
+
+
+def _parse_tuic(parsed, get_q, tag):
+    """tuic://uuid:password@host:port?sni=...&congestion_control=...&alpn=...
+
+    TUIC работает поверх QUIC (UDP) и часто проходит там, где TCP-протоколы
+    режутся DPI. Пароль может быть в userinfo (uuid:password) либо отдельным
+    параметром password= (некоторые генераторы ссылок кладут только uuid).
+    """
+    uuid = unquote(parsed.username or "")
+    if not uuid:
+        return None
+    password = unquote(parsed.password or "") or get_q("password")
+    if not password:
+        return None
+    outbound = {
+        "type": "tuic", "tag": tag,
+        "server": parsed.hostname, "server_port": parsed.port,
+        "uuid": uuid, "password": password,
+        "tls": {"enabled": True, "server_name": get_q("sni", parsed.hostname),
+                "insecure": True}
+    }
+    congestion = get_q("congestion_control") or get_q("congestion")
+    if congestion:
+        outbound["congestion_control"] = congestion
+    udp_mode = get_q("udp_relay_mode")
+    if udp_mode:
+        outbound["udp_relay_mode"] = udp_mode
+    alpn = get_q("alpn")
+    if alpn:
+        # alpn приходит как список через запятую: alpn=h3,h2
+        outbound["tls"]["alpn"] = [item for item in alpn.split(",") if item]
+    return outbound
 
 
 def parse_uri_to_singbox_outbound(uri, tag):
@@ -195,10 +242,6 @@ def parse_uri_to_singbox_outbound(uri, tag):
     Возвращает dict конфигурации или None, если URI не распознан.
     """
     try:
-        # tuic:// в проекте не поддерживается: собираем, но помечаем как
-        # неподдерживаемый (probe_uri_standalone вернёт понятную ошибку).
-        if uri.startswith("tuic://"):
-            return None
         parsed = urlparse(uri)
         # VMess хранит адрес и порт внутри Base64 JSON, а не в authority URI.
         # Shadowsocks тоже не проверяем здесь: форма ss://BASE64(method:pass@host:port)
@@ -217,6 +260,7 @@ def parse_uri_to_singbox_outbound(uri, tag):
             "ss": lambda: _parse_ss(uri, parsed, tag),
             "vmess": lambda: _parse_vmess(uri, tag),
             "hysteria2": lambda: _parse_hysteria2(parsed, get_q, tag),
+            "tuic": lambda: _parse_tuic(parsed, get_q, tag),
         }
         parser = parsers.get(parsed.scheme)
         return parser() if parser else None

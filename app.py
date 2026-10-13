@@ -38,7 +38,8 @@ from catalog import (FALLBACK_LISTS, GOIDA_FALLBACK_LISTS, SOURCE_LABELS, list_s
 from prober import (TEST_URL, TEST_URL_FALLBACK, CHECK_TIMEOUT, FAST_CHECK_TIMEOUT,
                     CHECK_CONCURRENCY, SERVICE_CONCURRENCY, POOL_CONCURRENCY,
                     POOL_RECHECK_SECONDS, SPEED_RECHECK_SECONDS, DISCOVERY_BATCH_SIZE,
-                    CHECK_RETRIES_ON_TIMEOUT, SERVICE_TARGETS, _classify_error,
+                    CHECK_RETRIES_ON_TIMEOUT, SERVICE_TARGETS, REQUIRED_SERVICES,
+                    _classify_error,
                     probe_uri_standalone, probe_services)
 from check_scheduler import build_pool_plan, interleave_ranges
 
@@ -213,7 +214,10 @@ def get_service_working(require_all_services=True):
     """Объединение текущих рабочих пулов без повторения URI.
 
     require_all_services=True — только серверы с доступом ко всем
-    SERVICE_TARGETS (секция ChatGPT); False — все рабочие (один ключ).
+    REQUIRED_SERVICES (секция ChatGPT); False — все рабочие (один ключ).
+    Остальные SERVICE_TARGETS (yt/tg/ig) дают профиль доступности в записи
+    пула, но выдачу не сужают: иначе расширение списка сервисов молча
+    опустошило бы таблицу.
     """
     combined = {}
     for list_type in ("black", "white"):
@@ -221,7 +225,7 @@ def get_service_working(require_all_services=True):
             if require_all_services:
                 services = config.get("services", {})
                 results = services.get("results", {})
-                if not all(results.get(name, {}).get("ok") is True for name in SERVICE_TARGETS):
+                if not all(results.get(name, {}).get("ok") is True for name in REQUIRED_SERVICES):
                     continue
             uri = config["uri"]
             if uri not in combined:
@@ -691,6 +695,8 @@ async def _run_check_core(check_type, progress_callback=None, source_id=None):
                                            or "Неожиданный ответ" in str(result_data)):
                     # Полная проверка сохраняет резервный URL и прежние таймауты.
                     # Быстрый проход лишь раньше доставляет кандидатов в ChatGPT.
+                    # Перехват ответа (заглушка DPI) сюда не попадает: он
+                    # детерминирован, полный проход дал бы тот же результат.
                     retry_items.append((uri_index, (source, (kind, uri))))
                     continue
                 if is_ok:
