@@ -279,8 +279,26 @@ fi
 say "Собираю образ"
 "${DC[@]}" build
 
+# Контейнер с именем where-is-my-vpn мог остаться от запуска в другой папке:
+# compose опознаёт «свои» контейнеры по метке проекта (имя каталога), поэтому
+# чужой контейнер он не пересоздаст, а упадёт с «container name is already in
+# use». Разбираемся заранее и говорим, что делать.
+if docker inspect where-is-my-vpn >/dev/null 2>&1; then
+    owner_dir="$(docker inspect where-is-my-vpn \
+        --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null)"
+    if [ -n "$owner_dir" ] && [ "$owner_dir" != "$APP_DIR" ]; then
+        say "ВНИМАНИЕ: контейнер where-is-my-vpn создан из другого каталога:"
+        say "  $owner_dir"
+        say "  текущий каталог: $APP_DIR"
+        say "Удаляю старый контейнер, чтобы имя освободилось (данные в volume целы)"
+        docker rm -f where-is-my-vpn >/dev/null
+    fi
+fi
+
 say "Запускаю"
-"${DC[@]}" up -d
+# --force-recreate: конфигурация могла измениться (например, build -> context),
+# тогда compose должен пересоздать контейнер, а не пытаться создать второй.
+"${DC[@]}" up -d --force-recreate
 
 # Ждём healthcheck, чтобы в конце показать реальный статус, а не «starting».
 say "Ожидаю готовности (до 60 с)"
