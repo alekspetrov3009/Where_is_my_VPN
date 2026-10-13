@@ -25,12 +25,14 @@ SINGBOX_URL="https://github.com/SagerNet/sing-box/releases/download/v${SB_VERSIO
 MODE="auto"
 PULL_SINGBOX=0
 ACTION="up"
+UPDATE_CODE=0
 
 usage() {
     cat <<'USAGE'
 Развёртывание «Where is my VPN» в Docker одной командой.
 
   bash deploy.sh                  собрать и запустить (режим выбирается сам)
+  bash deploy.sh --update         скачать свежий код и пересобрать
   bash deploy.sh --local          локальная сборка из этой папки
   bash deploy.sh --github         строго из GitHub, без автопереключения
   bash deploy.sh --pull-singbox   перекачать sing-box linux-amd64
@@ -40,8 +42,10 @@ usage() {
 По умолчанию: если рядом есть рабочий sing-box-bin/sing-box — сборка
 локальная, иначе из GitHub. Флаг --github отключает автопереключение.
 
+--update скачивает архив main-ветки и распаковывает поверх текущей папки.
+Файл .env, sing-box-bin/ и volume с данными при этом не затрагиваются.
+
 Скрипт идемпотентен: повторный запуск обновляет код и пересобирает образ.
-Файл .env и volume с данными (пул, конфиг, чекпоинты) не затрагиваются.
 USAGE
 }
 
@@ -49,6 +53,7 @@ for arg in "$@"; do
     case "$arg" in
         --local)        MODE="local" ;;
         --github)       MODE="github" ;;
+        --update)       UPDATE_CODE=1 ;;
         --pull-singbox) PULL_SINGBOX=1 ;;
         --logs)         ACTION="logs" ;;
         --down)         ACTION="down" ;;
@@ -89,6 +94,59 @@ if [ "$ACTION" = "down" ]; then
     say "Останавливаю контейнер (данные в volume сохранятся)"
     "${DC[@]}" down
     exit 0
+fi
+
+# --- Обновление кода (--update) ---------------------------------------------
+#
+# Скачивает архив main-ветки и распаковывает поверх текущей папки. Специально
+# не трогает .env (там пароль и настройки), sing-box-bin/ (бинарник может быть
+# положен вручную) и файлы данных пула.
+
+if [ "$UPDATE_CODE" = "1" ]; then
+    say "Обновляю код из ${REPO_URL} (ветка main)"
+
+    command -v unzip >/dev/null 2>&1 || die "для --update нужен unzip.
+Установите: apt install -y unzip  (или yum install -y unzip)"
+
+    tmp_zip="$(mktemp -d)/vpn.zip"
+    tmp_src="$(mktemp -d)"
+
+    # Архив отдаётся через codeload; зеркала тут не помогают, поэтому при
+    # недоступности GitHub честно сообщаем, а не ждём молча.
+    if ! curl -fL --connect-timeout 20 --max-time 300 -o "$tmp_zip" \
+            "${REPO_URL}/archive/refs/heads/main.zip"; then
+        rm -rf "$(dirname "$tmp_zip")" "$tmp_src"
+        die "не удалось скачать архив с GitHub.
+Проверьте доступ: curl -I https://github.com
+Если GitHub недоступен, обновляйте код вручную или используйте прокси."
+    fi
+
+    unzip -oq "$tmp_zip" -d "$tmp_src"
+    src_dir="$(find "$tmp_src" -maxdepth 1 -type d -name 'Where_is_my_VPN-*' | head -n1)"
+    [ -n "$src_dir" ] || die "в архиве не найдена папка проекта"
+
+    # Копируем поверх, сохраняя .env и вручную положенный бинарник.
+    # --exclude защищает их даже при наличии в архиве.
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -a \
+              --exclude '.env' \
+              --exclude 'sing-box-bin/' \
+              --exclude '.vpn_pool.json' --exclude '.vpn_schedule.json' \
+              --exclude '.singbox_config.json' \
+              "$src_dir"/ ./ 
+    else
+        # Без rsync: копируем всё, затем возвращаем сохранённые файлы.
+        backup="$(mktemp -d)"
+        [ -f .env ] && cp .env "$backup/"
+        [ -d sing-box-bin ] && cp -r sing-box-bin "$backup/"
+        cp -r "$src_dir"/. ./
+        [ -f "$backup/.env" ] && cp "$backup/.env" .env
+        [ -d "$backup/sing-box-bin" ] && cp -r "$backup/sing-box-bin/." sing-box-bin/
+        rm -rf "$backup"
+    fi
+
+    rm -rf "$(dirname "$tmp_zip")" "$tmp_src"
+    say "Код обновлён (.env и sing-box-bin сохранены)"
 fi
 
 # --- .env -------------------------------------------------------------------

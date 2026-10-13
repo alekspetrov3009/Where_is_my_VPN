@@ -37,6 +37,7 @@
 - Build context is switchable via `VPN_BUILD_CONTEXT` in `.env`: unset = GitHub repo URL, `.` = local folder. Local mode is required to use a hand-placed `sing-box-bin/sing-box`; GitHub mode clones the repo and ignores local files.
 - The Dockerfile downloads sing-box linux-amd64 through `docker/fetch_singbox.py`, which replaced a bare `urlretrieve` — that call had no timeout and hung the build forever on an unreachable GitHub, never reaching the mirrors. Keep per-attempt timeouts (`VPN_DL_TIMEOUT`/`VPN_DL_RETRIES` build-args) when editing.
 - `deploy.sh` is the single entry point (idempotent): creates `.env`, fetches sing-box, builds, starts, waits for healthcheck. Never touches `.env` or the `vpn-data` volume.
+- `deploy.sh --update` downloads the main-branch archive with host `curl` and unpacks it over the current folder, preserving `.env`, `sing-box-bin/` and pool files. This is the supported update path when GitHub is unreachable *from containers* but works from the host — a common DPI setup.
 - Mode is auto-detected: a valid ELF at `sing-box-bin/sing-box` forces local build, because GitHub-mode would clone the repo and re-download the binary (minutes of waiting, then failure, on networks without GitHub). The check reads the ELF magic bytes, not `./sing-box version` — deploy.sh also runs under Git Bash on Windows, where ELF cannot execute. `--github` disables the switch.
 - `.dockerignore` excludes only `sing-box-bin/sing-box.exe` (Windows), so a linux `sing-box-bin/sing-box` does reach the image.
 
