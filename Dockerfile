@@ -24,22 +24,36 @@ COPY app.py config.py paths.py storage.py catalog.py prober.py \
      config_parser.py check_scheduler.py singbox_manager.py ./
 COPY index.html admin.html ./
 
-# sing-box: сначала пробуем локальный linux-бинарник, иначе скачиваем с GitHub
+# sing-box: если в репозитории нет linux-бинарника — скачиваем с GitHub
+# (сначала официальный релиз, затем зеркала). ВАЖНО: релизы sing-box для
+# linux распространяются как .tar.gz (не .zip). Скачивание через python
+# urllib (tarfile тоже встроен) — curl в slim-образе отсутствует.
 COPY sing-box-bin/ ./sing-box-bin/
 RUN set -eux; \
-    if [ ! -x ./sing-box-bin/sing-box ] && [ -f ./sing-box-bin/sing-box.exe ]; then \
-        echo "В sing-box-bin только Windows-бинарник — скачиваю linux-amd64"; \
-        apt-get update && apt-get install -y --no-install-recommends unzip ca-certificates && rm -rf /var/lib/apt/lists/*; \
-        curl -fsSL -o /tmp/sing-box.zip \
-            "https://github.com/SagerNet/sing-box/releases/download/v1.10.3/sing-box-1.10.3-linux-amd64.zip" \
-        || { for m in https://ghfast.top/ https://mirror.ghproxy.com/ https://gh-proxy.com/; do \
-                curl -fsSL -o /tmp/sing-box.zip "${m}https://github.com/SagerNet/sing-box/releases/download/v1.10.3/sing-box-1.10.3-linux-amd64.zip" && break; \
-            done; }; \
-        unzip -o /tmp/sing-box.zip -d /tmp/sb; \
-        find /tmp/sb -name sing-box -type f -exec mv {} ./sing-box-bin/sing-box \; ; \
-        rm -rf /tmp/sb /tmp/sing-box.zip; \
+    if [ ! -x ./sing-box-bin/sing-box ]; then \
+        echo "В sing-box-bin нет linux-бинарника — скачиваю linux-amd64"; \
+        SB_URL="https://github.com/SagerNet/sing-box/releases/download/v1.10.3/sing-box-1.10.3-linux-amd64.tar.gz"; \
+        ok=0; \
+        for u in "$SB_URL" \
+                 "https://ghfast.top/$SB_URL" \
+                 "https://mirror.ghproxy.com/$SB_URL" \
+                 "https://gh-proxy.com/$SB_URL"; do \
+            echo "Попытка: $u"; \
+            if python -c "import urllib.request, sys; urllib.request.urlretrieve(sys.argv[1], '/tmp/sing-box.tar.gz')" "$u"; then \
+                ok=1; break; \
+            fi; \
+        done; \
+        if [ "$ok" != "1" ]; then \
+            echo "ERROR: не удалось скачать sing-box ни с одного источника" >&2; \
+            exit 1; \
+        fi; \
+        python -c "import tarfile, glob, shutil; \
+t = tarfile.open('/tmp/sing-box.tar.gz'); \
+t.extractall('/tmp/sb'); \
+shutil.move(glob.glob('/tmp/sb/**/sing-box', recursive=True)[0], './sing-box-bin/sing-box')"; \
+        rm -rf /tmp/sb /tmp/sing-box.tar.gz; \
     fi; \
-    chmod +x ./sing-box-bin/sing-box* 2>/dev/null || true; \
+    chmod +x ./sing-box-bin/sing-box; \
     ./sing-box-bin/sing-box version
 
 # Каталог изменяемых данных (пул, конфиг, чекпоинты) — volume
