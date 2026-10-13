@@ -1010,14 +1010,17 @@
             toast('Фильтры сброшены', 'success');
         }
 
-        function oneKeyUrl() {
-            // Ссылка-ключ: абсолютный URL /api/onekey (клиент забирает свежий
-            // список серверов при каждом обновлении профиля).
-            return new URL('/api/onekey', location.origin).href;
+        function oneKeyUrl(format) {
+            // Ссылка-ключ: абсолютный URL /api/onekey. format=json — готовый
+            // конфиг sing-box (urltest); без параметра — base64-подписка
+            // (универсальный формат для клиентов-подписок).
+            const path = format === 'json' ? '/api/onekey?format=json' : '/api/onekey';
+            return new URL(path, location.origin).href;
         }
 
         function showOneKey() {
-            const url = oneKeyUrl();
+            const subUrl = oneKeyUrl();
+            const jsonUrl = oneKeyUrl('json');
             const modal = document.createElement('div');
             modal.className = 'modal-backdrop';
             modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
@@ -1027,15 +1030,18 @@
                         <h3 class="text-lg font-bold text-white">🔑 Один ключ (автопереключение)</h3>
                         <button onclick="this.closest('.modal-backdrop').remove()" class="btn btn-ghost icon-btn" aria-label="Закрыть">×</button>
                     </div>
-                    <p class="text-xs text-gray-400 mb-4">Конфиг sing-box с urltest: клиент сам выбирает сервер с минимальным пингом и переключается при деградации. Список серверов обновляется при каждом рефетче профиля.</p>
+                    <p class="text-xs text-gray-400 mb-3">Подписка из лучших стабильных серверов. Клиент сам выбирает сервер с минимальным пингом и переключается при деградации. Список обновляется при каждом рефетче профиля.</p>
                     <div class="bg-white p-4 rounded-xl mb-4 flex justify-center">
-                        <img src="/api/qr?uri=${encodeURIComponent(url)}" alt="QR-код ссылки-ключа" class="max-w-full h-auto" style="image-rendering: pixelated;" loading="lazy">
+                        <img src="/api/qr?uri=${encodeURIComponent(subUrl)}" alt="QR-код ссылки-подписки" class="max-w-full h-auto" style="image-rendering: pixelated;" loading="lazy">
                     </div>
-                    <p class="text-xs text-gray-400 text-center mb-4 break-all font-mono">${escapeHtml(url)}</p>
-                    <p class="text-xs text-gray-400 text-center mb-4">Импортируйте URL как подписку в sing-box / Hiddify / SFA или отсканируйте камерой.</p>
+                    <p class="text-xs text-gray-300 mb-1 font-semibold">1. Универсальная подписка (v2rayNG, Nekoray, Streisand, Hiddify):</p>
+                    <p class="text-xs text-gray-400 text-center mb-2 break-all font-mono">${escapeHtml(subUrl)}</p>
+                    <p class="text-xs text-gray-300 mb-1 font-semibold">2. Конфиг sing-box с urltest (sing-box, SFA/SFI):</p>
+                    <p class="text-xs text-gray-400 text-center mb-4 break-all font-mono">${escapeHtml(jsonUrl)}</p>
                     <div class="flex gap-2">
-                        <button onclick="copyToClipboard('${encodeURIComponent(url)}', this)" class="flex-1 btn btn-primary justify-center">📋 Копировать ссылку</button>
-                        <button onclick="this.closest('.modal-backdrop').remove()" class="flex-1 btn btn-ghost justify-center">Закрыть</button>
+                        <button onclick="copyToClipboard('${encodeURIComponent(subUrl)}', this)" class="flex-1 btn btn-primary justify-center">📋 Подписка</button>
+                        <button onclick="copyToClipboard('${encodeURIComponent(jsonUrl)}', this)" class="flex-1 btn btn-primary justify-center">📋 sing-box JSON</button>
+                        <button onclick="this.closest('.modal-backdrop').remove()" class="btn btn-ghost justify-center">Закрыть</button>
                     </div>
                 </div>
             `;

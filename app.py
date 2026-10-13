@@ -1,6 +1,7 @@
 import asyncio
 from itertools import islice
 from contextlib import asynccontextmanager
+import base64
 import copy
 import io
 import json
@@ -320,6 +321,61 @@ def build_onekey_config(limit=None):
         }
     }
     return config, None
+
+
+def build_onekey_subscription(limit=None):
+    """Собирает base64-подписку «один ключ» из лучших рабочих серверов.
+
+    Универсальный формат для клиентов-подписок (v2rayNG, Nekoray, Streisand,
+    Hiddify): base64 от списка URI по одному на строку. Автопереключение
+    обеспечивает сам клиент (urltest/selector в его настройках).
+    Возвращает (text, error_message); ровно один из элементов не None.
+    """
+    if limit is None:
+        limit = ONEKEY_LIMIT
+    candidates = [c for c in get_service_working(require_all_services=False) if c.get("stable")]
+    if not candidates:
+        return None, "Нет стабильных серверов — ключ появится после проверки пула"
+
+    # Дедуп по конечной точке: один сервер с разными remark — одна запись.
+    unique = {}
+    for config in candidates:
+        key = canonical_endpoint(config["uri"])
+        if key not in unique:
+            unique[key] = config
+    candidates = list(unique.values())
+
+    def sort_key(config):
+        # Свежий замер скорости (правило 3 часов — как currentSpeed на фронте).
+        speed = (config.get("speed") or {})
+        fresh_speed = speed.get("mbps") if (
+            isinstance(speed.get("mbps"), (int, float))
+            and speed.get("mbps") == speed.get("mbps")  # не NaN
+            and time.time() - speed.get("checked_at", 0) <= SPEED_RECHECK_SECONDS
+        ) else None
+        return (config.get("latency") or 9999,
+                -(fresh_speed or 0),
+                -config.get("successful_checks", 0))
+
+    candidates.sort(key=sort_key)
+    uris = [c["uri"] for c in candidates[:limit]]
+    if not uris:
+        return None, "Нет подходящих серверов для подписки"
+    return base64.b64encode("\n".join(uris).encode()).decode(), None
+
+
+def _onekey_wants_json(request):
+    """Определяет, ожидает ли клиент sing-box JSON вместо base64-подписки.
+
+    Явный ?format=json|base64 имеет приоритет; иначе — User-Agent:
+    sing-box и его GUI-обёртки (SFA/SFI/SFM/SFT, Hiddify) понимают JSON,
+    остальные клиенты-подписки ждут base64-список URI.
+    """
+    fmt = request.query_params.get("format", "").strip().lower()
+    if fmt in ("json", "base64"):
+        return fmt == "json"
+    ua = (request.headers.get("user-agent") or "").lower()
+    return any(marker in ua for marker in ("sing-box", "sfa/", "sfi/", "sfm/", "sft/", "hiddify"))
 
 
 async def maintain_working_pool(singbox_path, first_sweep):
@@ -1126,23 +1182,34 @@ async def get_public_status():
     }
 
 @app.get("/api/onekey")
-async def onekey(token: str = ""):
-    """Один ключ с автопереключением: sing-box конфиг (urltest) из лучших серверов.
+async def onekey(request: Request, token: str = ""):
+    """Один ключ с автопереключением: подписка из лучших серверов.
 
-    Файл импортируется в sing-box / Hiddify / SFA как локальный профиль, а сам
-    URL можно добавить как удалённую подписку — клиент будет забирать свежий
-    список серверов при каждом обновлении профиля. Защита: если задан
-    VPN_ONEKEY_TOKEN, URL обязан содержать ?token=<значение>.
+    Формат ответа: base64-список URI (универсальная подписка для v2rayNG,
+    Nekoray, Streisand, Hiddify) — по умолчанию; sing-box JSON с urltest —
+    при ?format=json или User-Agent sing-box/SFA/SFI/SFM/SFT/Hiddify.
+    Защита: если задан VPN_ONEKEY_TOKEN, URL обязан содержать ?token=<значение>.
     """
     if ONEKEY_TOKEN and token != ONEKEY_TOKEN:
         raise HTTPException(status_code=403, detail="Неверный токен")
-    config, error = build_onekey_config()
+    if _onekey_wants_json(request):
+        config, error = build_onekey_config()
+        if error:
+            raise HTTPException(status_code=503, detail=error)
+        return Response(
+            content=json.dumps(config, ensure_ascii=False, indent=2),
+            media_type="application/json",
+            headers={"Content-Disposition": 'attachment; filename="onekey-singbox.json"',
+                     "Cache-Control": "no-store"}
+        )
+    text, error = build_onekey_subscription()
     if error:
         raise HTTPException(status_code=503, detail=error)
     return Response(
-        content=json.dumps(config, ensure_ascii=False, indent=2),
-        media_type="application/json",
-        headers={"Content-Disposition": 'attachment; filename="onekey-singbox.json"',
+        content=text,
+        media_type="text/plain",
+        headers={"profile-title": "Where is my VPN",
+                 "profile-update-interval": "1",
                  "Cache-Control": "no-store"}
     )
 
