@@ -4,31 +4,59 @@
 Все настраиваемые значения вынесены в переменные окружения (см. [config.py](config.py)
 и [.env.example](.env.example)).
 
+## Как устроено развёртывание
+
+При сборке образа Docker клонирует актуальный код прямо из GitHub-репозитория
+<https://github.com/alekspetrov3009/Where_is_my_VPN>: [docker-compose.yml](docker-compose.yml)
+указывает репозиторий как контекст сборки. Локальная копия исходников не нужна —
+достаточно двух файлов: `docker-compose.yml` и `.env`.
+
+- `docker compose up -d --build` — каждая сборка подтягивает свежую `main`-ветку.
+- Закрепить конкретную версию — фрагмент URL в compose:
+  `build: https://github.com/alekspetrov3009/Where_is_my_VPN.git#v1.0.0`
+  (после `#` — тег, ветка или хэш коммита).
+- Для локальной разработки замените в compose строку `build:` на `build: .` —
+  соберётся из локальных файлов.
+
 ## Состав Docker-файлов
 
 | Файл | Назначение |
 |------|-----------|
 | [Dockerfile](Dockerfile) | Образ на `python:3.13-slim`; sing-box linux-amd64 ставится на этапе сборки |
-| [docker-compose.yml](docker-compose.yml) | Сервис с volume `/data`, healthcheck, `env_file: .env` |
+| [docker-compose.yml](docker-compose.yml) | Сервис с volume `/data`, healthcheck, `env_file: .env`; контекст сборки — GitHub-репозиторий |
 | [.dockerignore](.dockerignore) | Исключает данные, тесты и Windows-бинарник из контекста сборки |
 | [.env.example](.env.example) | Шаблон переменных окружения с комментариями |
 | [requirements.txt](requirements.txt) | Зависимости с зафиксированными версиями |
 
-## Быстрый старт
+## Быстрый старт без локальной копии проекта
 
-Требуется Docker Desktop (Windows) или Docker Engine 20.10+.
+Требуется Docker Engine 20.10+ / Docker Desktop. Скачиваются только файлы
+развёртывания — код приложения при сборке придёт из GitHub.
+
+Linux / Proxmox LXC / VM:
+
+```bash
+mkdir where-is-my-vpn && cd where-is-my-vpn
+curl -LO https://raw.githubusercontent.com/alekspetrov3009/Where_is_my_VPN/main/docker-compose.yml
+curl -LO https://raw.githubusercontent.com/alekspetrov3009/Where_is_my_VPN/main/.env.example
+mv .env.example .env
+nano .env   # обязательно смените VPN_ADMIN_PASSWORD
+docker compose up -d --build
+```
+
+Windows (cmd):
 
 ```bat
-:: 1. Создать .env из шаблона (необязательно — есть значения по умолчанию)
-copy .env.example .env
+mkdir where-is-my-vpn && cd where-is-my-vpn
+curl -LO https://raw.githubusercontent.com/alekspetrov3009/Where_is_my_VPN/main/docker-compose.yml
+curl -LO https://raw.githubusercontent.com/alekspetrov3009/Where_is_my_VPN/main/.env.example
+ren .env.example .env
+docker compose up -d --build
+```
 
-:: 2. Собрать образ
-docker compose build
+Проверка:
 
-:: 3. Запустить
-docker compose up -d
-
-:: 4. Проверить
+```bash
 docker compose ps
 docker compose logs -f
 ```
@@ -38,6 +66,20 @@ docker compose logs -f
 - Публичная страница: <http://localhost:8079>
 - Админ-панель: <http://localhost:8079/vpn-control-panel-x7k9>
   (логин/пароль — `VPN_ADMIN_USER` / `VPN_ADMIN_PASSWORD` из `.env`, по умолчанию `admin` / `vpn2026`)
+
+## Быстрый старт из локальной копии проекта
+
+Если репозиторий уже склонирован:
+
+```bat
+cd 2_Where_is_my_VPN
+copy .env.example .env
+docker compose up -d --build
+```
+
+Сборка всё равно пойдёт из GitHub (так настроен контекст в
+[docker-compose.yml](docker-compose.yml)). Чтобы собрать из локальных файлов —
+замените строку `build:` на `build: .`.
 
 ## Переменные окружения
 
@@ -67,40 +109,44 @@ docker compose logs -f
 чекпоинты `.vpn_schedule.json`) хранятся в volume `vpn-data` → `/data`
 внутри контейнера ([paths.py](paths.py) читает `VPN_DATA_DIR`).
 
-```bat
-:: Посмотреть, что лежит в volume
+```bash
+# Посмотреть, что лежит в volume
 docker run --rm -v where-is-my-vpn_vpn-data:/data alpine ls -la /data
 
-:: Скопировать пул из контейнера на хост
-docker run --rm -v where-is-my-vpn_vpn-data:/data -v %cd%:/backup alpine cp /data/.vpn_pool.json /backup/
+# Скопировать пул из контейнера на хост
+docker run --rm -v where-is-my-vpn_vpn-data:/data -v $(pwd):/backup alpine cp /data/.vpn_pool.json /backup/
 
-:: Полностью стереть данные (пул будет собран заново)
+# Полностью стереть данные (пул будет собран заново)
 docker compose down -v
 ```
 
-## Обновление
+## Обновление до актуальной версии
 
-```bat
-docker compose down
-docker compose build
-docker compose up -d
+```bash
+docker compose up -d --build
 ```
 
-Пул в volume сохраняется между пересозданиями контейнера.
+При каждой сборке Docker заново клонирует `main`-ветку репозитория, поэтому
+пересборка всегда подтягивает свежий код. Пул в volume сохраняется между
+пересозданиями контейнера. Заодно обновить базовый образ (`python:3.13-slim`):
+
+```bash
+docker compose build --pull
+```
 
 ## Логи и диагностика
 
 `print()` в stdout — штатный механизм логирования проекта (портативный exe
 показывает консоль), поэтому в Docker всё видно через:
 
-```bat
+```bash
 docker compose logs -f          # следить за логами
 docker compose logs --tail 100  # последние 100 строк
 ```
 
 Healthcheck опрашивает `/api/public/status` каждые 30 секунд:
 
-```bat
+```bash
 docker inspect --format "{{.State.Health.Status}}" where-is-my-vpn
 ```
 
@@ -108,31 +154,38 @@ docker inspect --format "{{.State.Health.Status}}" where-is-my-vpn
 
 ## Особенности работы в контейнере
 
-1. **sing-box linux-amd64**. В репозитории лежит `sing-box.exe` (Windows).
+1. **Код берётся из GitHub** — контекст сборки в
+   [docker-compose.yml](docker-compose.yml) указывает на
+   <https://github.com/alekspetrov3009/Where_is_my_VPN>; пересборка = свежая версия.
+2. **sing-box linux-amd64**. В репозитории лежит `sing-box.exe` (Windows).
    [Dockerfile](Dockerfile) на этапе сборки скачивает linux-версию 1.10.3
    (с зеркалами, как в [singbox_manager.py](singbox_manager.py)) и проверяет
    её запуском `sing-box version`. Если положите `sing-box-bin/sing-box`
    (linux-бинарник) в репозиторий — скачивание не потребуется.
-2. **Браузер не открывается**: `VPN_OPEN_BROWSER=0` в контейнере
+3. **Браузер не открывается**: `VPN_OPEN_BROWSER=0` в контейнере
    ([app.py](app.py) вызывает `os.startfile` только при включённой опции).
-3. **Сеть**: контейнеру нужен доступ к `api.github.com`, `raw.githack.com`,
+4. **Сеть**: контейнеру нужен доступ к `api.github.com`, `raw.githack.com`,
    `chatgpt.com`, `speed.cloudflare.com` и GitHub-зеркалам. Проверка VPN
    порождает множество исходящих соединений — ограничивать их не нужно.
-4. **Процессы**: sing-box запускается как дочерний процесс; в compose включён
+5. **Процессы**: sing-box запускается как дочерний процесс; в compose включён
    `init: true` (tini), чтобы зомби-процессы не накапливались.
-5. **Порт занят на хосте**: измените левую часть в `ports` файла
+6. **Порт занят на хосте**: измените левую часть в `ports` файла
    [docker-compose.yml](docker-compose.yml) или `VPN_SERVER_PORT` в `.env`.
 
 ## Запуск без docker compose
 
-```bat
-docker build -t where-is-my-vpn .
-docker run -d --name where-is-my-vpn ^
-  -p 8079:8079 ^
-  -e VPN_ADMIN_PASSWORD=мой-пароль ^
-  -v vpn-data:/data ^
+```bash
+docker build -t where-is-my-vpn https://github.com/alekspetrov3009/Where_is_my_VPN.git
+docker run -d --name where-is-my-vpn \
+  -p 8079:8079 \
+  -e VPN_ADMIN_PASSWORD=мой-пароль \
+  -v vpn-data:/data \
   where-is-my-vpn
 ```
+
+`docker build` умеет принимать git-URL как контекст: код клонируется из
+репозитория, локальные файлы не нужны. Для сборки из локальной копии
+замените URL на `.`
 
 ## Локальный запуск без Docker (как раньше)
 

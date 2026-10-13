@@ -1,6 +1,10 @@
 services:
   vpn-validator:
-    build: .
+    # Актуальный код всегда берётся из GitHub-репозитория: при каждой сборке
+    # (docker compose build / up -d --build) Docker клонирует main-ветку.
+    # Закрепить версию: ...Where_is_my_VPN.git#тег-или-хэш-коммита
+    # Для локальной разработки замените строку на: build: .
+    build: https://github.com/alekspetrov3009/Where_is_my_VPN.git
     image: where-is-my-vpn:latest
     container_name: where-is-my-vpn
     restart: unless-stopped
