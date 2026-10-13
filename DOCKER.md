@@ -162,6 +162,10 @@ docker inspect --format "{{.State.Health.Status}}" where-is-my-vpn
    (с зеркалами, как в [singbox_manager.py](singbox_manager.py)) и проверяет
    её запуском `sing-box version`. Если положите `sing-box-bin/sing-box`
    (linux-бинарник) в репозиторий — скачивание не потребуется.
+   Загрузкой занимается [docker/fetch_singbox.py](docker/fetch_singbox.py):
+   у каждой попытки есть таймаут, поэтому недоступный GitHub не подвешивает
+   сборку навсегда, а перебор зеркал идёт дальше. Настройки — build-args
+   `VPN_DL_TIMEOUT` (по умолчанию 60 с) и `VPN_DL_RETRIES` (2).
 3. **Браузер не открывается**: `VPN_OPEN_BROWSER=0` в контейнере
    ([app.py](app.py) вызывает `os.startfile` только при включённой опции).
 4. **Сеть**: контейнеру нужен доступ к `api.github.com`, `raw.githack.com`,
@@ -171,6 +175,32 @@ docker inspect --format "{{.State.Health.Status}}" where-is-my-vpn
    `init: true` (tini), чтобы зомби-процессы не накапливались.
 6. **Порт занят на хосте**: измените левую часть в `ports` файла
    [docker-compose.yml](docker-compose.yml) или `VPN_SERVER_PORT` в `.env`.
+
+## Сборка за прокси и медленным GitHub
+
+Скачивание sing-box идёт на этапе сборки, поэтому при недоступном GitHub
+сборка падает с `ERROR: не удалось скачать sing-box ни с одного источника`.
+Варианты:
+
+```bash
+# 1. Прокси для сборки (корпоративный MITM — добавьте VPN_DL_INSECURE=1)
+docker compose build --build-arg HTTPS_PROXY=http://proxy:3128 --build-arg HTTP_PROXY=http://proxy:3128
+
+# 2. Увеличить таймаут и число попыток на источник
+docker compose build --build-arg VPN_DL_TIMEOUT=180 --build-arg VPN_DL_RETRIES=3
+
+# 3. Самый надёжный путь: положить linux-бинарник рядом с исходниками,
+#    тогда скачивание не выполняется вообще
+curl -L -o sing-box-bin/sing-box \
+  https://github.com/SagerNet/sing-box/releases/download/v1.10.3/sing-box-1.10.3-linux-amd64.tar.gz
+tar -xzf sing-box-bin/sing-box -C /tmp   # внутри sing-box-1.10.3-linux-amd64/sing-box
+mv /tmp/sing-box-1.10.3-linux-amd64/sing-box sing-box-bin/sing-box
+chmod +x sing-box-bin/sing-box
+```
+
+Если сборка «висит» на шаге `Попытка: https://github.com/...` без вывода —
+это старая версия [Dockerfile](Dockerfile): там использовался `urlretrieve`
+без таймаута. Обновите файл и [docker/fetch_singbox.py](docker/fetch_singbox.py).
 
 ## Запуск без docker compose
 

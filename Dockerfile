@@ -28,7 +28,17 @@ COPY index.html admin.html ./
 # (сначала официальный релиз, затем зеркала). ВАЖНО: релизы sing-box для
 # linux распространяются как .tar.gz (не .zip). Скачивание через python
 # urllib (tarfile тоже встроен) — curl в slim-образе отсутствует.
+#
+# Загрузчик написан отдельным скриптом (а не urlretrieve в одну строку) ради
+# таймаутов: при «зависшем» соединении с GitHub urlretrieve без timeout ждёт
+# бесконечно и до зеркал дело не доходит. Здесь на каждую попытку отведено
+# VPN_DL_TIMEOUT секунд, попыток VPN_DL_RETRIES, и учитывается прокси из
+# окружения сборки (HTTPS_PROXY/HTTP_PROXY) — полезно за корпоративным MITM.
 COPY sing-box-bin/ ./sing-box-bin/
+COPY docker/fetch_singbox.py /tmp/fetch_singbox.py
+# Таймаут одной попытки (сек) и число попыток на источник.
+ARG VPN_DL_TIMEOUT=60
+ARG VPN_DL_RETRIES=2
 RUN set -eux; \
     if [ ! -x ./sing-box-bin/sing-box ]; then \
         echo "В sing-box-bin нет linux-бинарника — скачиваю linux-amd64"; \
@@ -39,12 +49,15 @@ RUN set -eux; \
                  "https://mirror.ghproxy.com/$SB_URL" \
                  "https://gh-proxy.com/$SB_URL"; do \
             echo "Попытка: $u"; \
-            if python -c "import urllib.request, sys; urllib.request.urlretrieve(sys.argv[1], '/tmp/sing-box.tar.gz')" "$u"; then \
+            if python /tmp/fetch_singbox.py "$u" /tmp/sing-box.tar.gz \
+                   --timeout "$VPN_DL_TIMEOUT" --retries "$VPN_DL_RETRIES"; then \
                 ok=1; break; \
             fi; \
         done; \
         if [ "$ok" != "1" ]; then \
             echo "ERROR: не удалось скачать sing-box ни с одного источника" >&2; \
+            echo "Подсказка: положите linux-бинарник в sing-box-bin/sing-box либо" >&2; \
+            echo "передайте прокси: docker compose build --build-arg HTTPS_PROXY=..." >&2; \
             exit 1; \
         fi; \
         python -c "import tarfile, glob, shutil; \
