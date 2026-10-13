@@ -1,0 +1,24 @@
+# Устанавливаем зависимости
+python -m pip install fastapi uvicorn qrcode pillow curl_cffi
+python -m pip install nuitka
+python -m pip install ordered-set
+# Опциональные ускорители сборки (те, что раньше были в [acceleration])
+python -m pip install ordered-set zstandard requests
+
+# Переходим в нужную директорию
+cd /d D:\services\2_Actual_List_VPN
+
+# Удаляем старую сборку
+rmdir /s /q dist
+
+# Собираем новый дистрибутив
+
+python -m nuitka --standalone --onefile ^
+    --output-filename="Where is my VPN.exe" ^
+    --windows-icon-from-ico=icon.ico ^
+    --include-data-files=index.html=index.html ^
+    --include-data-files=admin.html=admin.html ^
+    --include-data-dir=sing-box-bin=sing-box-bin ^
+    --enable-plugin=anti-bloat ^
+    --output-dir=dist ^
+    app.py

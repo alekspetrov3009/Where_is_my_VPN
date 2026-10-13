@@ -1,0 +1,5 @@
+fastapi==0.139.2
+uvicorn==0.51.0
+qrcode==8.2
+pillow==12.3.0
+curl_cffi==0.16.3

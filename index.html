@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%233b82f6'/%3E%3Cpath d='M20 50 Q50 20 80 50 Q50 80 20 50' fill='none' stroke='white' stroke-width='4'/%3E%3Cpath d='M50 20 L50 80' stroke='white' stroke-width='4'/%3E%3Crect x='42' y='42' width='16' height='20' rx='3' fill='white'/%3E%3Cpath d='M45 42 L45 35 Q50 30 55 35 L55 42' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
+    <title>Where is my VPN? — актуальные конфигурации</title>
+    <meta name="description" content="Автоматически проверяемые VPN-конфигурации: стабильные, Black/White листы, доступ к ChatGPT. Копирование и QR для телефона.">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root { color-scheme: dark; --card: #111827; --line: #1f2937; }
+        html { scroll-behavior: smooth; }
+        body { background: radial-gradient(1200px 500px at 80% -10%, rgba(59,130,246,.12), transparent), radial-gradient(900px 420px at 10% 0%, rgba(16,185,129,.10), transparent), #0b1120; }
+        .glass { background: rgba(17,24,39,.82); backdrop-filter: blur(10px); }
+        .config-row { transition: background .15s ease; }
+        .config-row:hover { background-color: rgba(59, 130, 246, 0.07); }
+        .ping-good { color: #10b981; font-weight: 600; }
+        .ping-medium { color: #f59e0b; font-weight: 600; }
+        .ping-bad { color: #ef4444; font-weight: 600; }
+        .copy-btn, .qr-btn { transition: transform .12s ease, opacity .2s; }
+        .copy-btn:active, .qr-btn:active { transform: scale(.94); }
+        @media (hover: hover) {
+            .copy-btn, .qr-btn { opacity: .55; }
+            .config-row:hover .copy-btn, .config-row:hover .qr-btn { opacity: 1; }
+        }
+        .table-container { max-height: 520px; overflow: auto; scrollbar-width: thin; }
+        .table-container::-webkit-scrollbar { height: 8px; width: 8px; }
+        .table-container::-webkit-scrollbar-thumb { background: #374151; border-radius: 8px; }
+        .config-table { table-layout: fixed; width: 100%; min-width: 880px; }
+        .country-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+        .host-cell { overflow-wrap: anywhere; word-break: break-all; min-width: 0; }
+        .country-select { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+        .server-address { display: block; overflow-wrap: anywhere; word-break: break-word; font-weight: 600; }
+        .section-card { background: linear-gradient(180deg, rgba(17,24,39,.9), rgba(17,24,39,.75)); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+        .section-head { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; padding: .9rem 1rem; border-bottom: 1px solid var(--line); }
+        .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-left: auto; }
+        .toolbar select, .toolbar input[type="search"] { background: #0f172a; border: 1px solid #374151; border-radius: 10px; padding: .4rem .6rem; font-size: 12px; color: #e5e7eb; }
+        .toolbar select:focus, .toolbar input:focus { outline: 2px solid rgba(59,130,246,.5); outline-offset: 0; border-color: #3b82f6; }
+        .btn { display: inline-flex; align-items: center; gap: .4rem; border-radius: 10px; padding: .45rem .8rem; font-size: 12px; font-weight: 600; border: 1px solid transparent; cursor: pointer; transition: filter .15s, transform .1s; }
+        .btn:active { transform: scale(.97); }
+        .btn-primary { background: #2563eb; color: #fff; } .btn-primary:hover { background: #1d4ed8; }
+        .btn-success { background: #059669; color: #fff; } .btn-success:hover { background: #047857; }
+        .btn-ghost { background: #1f2937; color: #e5e7eb; border-color: #374151; } .btn-ghost:hover { background: #273449; }
+        .icon-btn { min-width: 40px; min-height: 36px; justify-content: center; font-size: 16px; border-radius: 10px; }
+        .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: .15rem .6rem; font-size: 11px; font-weight: 700; background: #1f2937; border: 1px solid #374151; color: #e5e7eb; }
+        .badge-green { background: rgba(16,185,129,.15); border-color: rgba(16,185,129,.4); color: #6ee7b7; }
+        .badge-blue { background: rgba(59,130,246,.15); border-color: rgba(59,130,246,.4); color: #93c5fd; }
+        .badge-yellow { background: rgba(245,158,11,.15); border-color: rgba(245,158,11,.4); color: #fcd34d; }
+        .badge-purple { background: rgba(168,85,247,.16); border-color: rgba(168,85,247,.4); color: #d8b4fe; }
+        .proto { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; background: #0f172a; border: 1px solid #334155; color: #93c5fd; border-radius: 6px; padding: 1px 6px; margin-right: 6px; }
+        .skeleton { position: relative; overflow: hidden; background: #1f2937; border-radius: 8px; min-height: 14px; }
+        .skeleton::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent); animation: shimmer 1.2s infinite; }
+        @keyframes shimmer { from { transform: translateX(-100%);} to { transform: translateX(100%);} }
+        #toasts { position: fixed; bottom: 18px; right: 18px; z-index: 100; display: flex; flex-direction: column; gap: 8px; max-width: min(360px, 90vw); }
+        .toast { background: #111827; border: 1px solid #374151; border-left: 4px solid #3b82f6; color: #e5e7eb; border-radius: 12px; padding: 10px 12px; font-size: 13px; box-shadow: 0 12px 30px rgba(0,0,0,.4); animation: toast-in .2s ease; }
+        .toast.success { border-left-color: #10b981; } .toast.error { border-left-color: #ef4444; }
+        @keyframes toast-in { from { opacity: 0; transform: translateY(8px);} to { opacity: 1; transform: none;} }
+        .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 90; padding: 16px; animation: toast-in .18s ease; }
+        .sticky-top { position: sticky; top: 0; z-index: 40; }
+        @media (max-width: 767px) {
+            #statusPanel { min-width: 0; width: 100%; }
+            .table-container { max-height: 72vh; }
+            .config-table { display: block; min-width: 0; }
+            .config-table thead { display: none; }
+            .config-table tbody { display: flex; flex-direction: column; gap: 10px; width: 100%; padding: 10px; }
+            .config-table .config-row { display: grid; grid-template-columns: 1fr auto; gap: 6px; background: #0f172a; border: 1px solid #1f2937; border-radius: 12px; padding: 10px; }
+            .config-table td { display: block; min-width: 0; padding: 0; }
+            .config-table .country-cell { max-width: none; white-space: normal; overflow-wrap: anywhere; font-weight: 600; }
+            .config-table .host-cell, .config-table .actions-cell { grid-column: 1 / -1; }
+            .metric-cell::before { content: attr(data-label); display: block; font-size: 11px; color: #9ca3af; margin-bottom: 2px; }
+            .copy-btn, .qr-btn { opacity: 1; min-height: 44px; min-width: 48px; }
+            .toolbar { width: 100%; margin-left: 0; }
+            .toolbar input[type="search"] { flex: 1; min-width: 140px; }
+        }
+        @media (hover: none) { .copy-btn, .qr-btn { opacity: 1; } }
+        .pulse { animation: pulse-green 2s infinite; }
+        @keyframes pulse-green { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+        .pulse-blue { animation: pulse-blue 2s infinite; }
+        @keyframes pulse-blue { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
+        :focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+        /* Пинг-пилюли, мини-бары скорости, QR-превью, модалка */
+        .ping-good.ping-badge { background: rgba(16,185,129,.14); }
+        .ping-medium.ping-badge { background: rgba(245,158,11,.16); }
+        .ping-bad.ping-badge { background: rgba(239,68,68,.14); }
+        .ping-badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; white-space: nowrap; }
+        .speedbar { height: 4px; background: #1f2937; border-radius: 999px; margin-top: 5px; max-width: 96px; overflow: hidden; }
+        .speedbar > i { display: block; height: 100%; background: linear-gradient(90deg,#06b6d4,#3b82f6); border-radius: 999px; }
+        #qrPreview { position: fixed; z-index: 120; pointer-events: none; background: #fff; padding: 6px; border-radius: 10px; box-shadow: 0 12px 30px rgba(0,0,0,.45); border: 1px solid #e2e8f0; }
+        #qrPreview img { width: 140px; height: 140px; display: block; border-radius: 6px; }
+        .modal-box { background: #111827; }
+        /* Светлая тема */
+        html[data-theme="light"] { --card: #ffffff; --line: #e2e8f0; }
+        html[data-theme="light"] body { background: radial-gradient(1200px 500px at 80% -10%, rgba(59,130,246,.10), transparent), #f1f5f9; color: #0f172a; }
+        html[data-theme="light"] .glass { background: rgba(255,255,255,.9); }
+        html[data-theme="light"] header.glass { border-color: #e2e8f0; }
+        html[data-theme="light"] .section-card { background: #fff; border-color: #e2e8f0; box-shadow: 0 10px 24px rgba(15,23,42,.08); }
+        html[data-theme="light"] .border-gray-800 { border-color: #e2e8f0 !important; }
+        html[data-theme="light"] .border-gray-700 { border-color: #e2e8f0 !important; }
+        html[data-theme="light"] thead[class*="bg-gray-800"] { background: #f1f5f9; color: #475569; }
+        html[data-theme="light"] .toolbar select, html[data-theme="light"] .toolbar input[type="search"] { background: #fff; border-color: #cbd5e1; color: #0f172a; }
+        html[data-theme="light"] .text-gray-100, html[data-theme="light"] .text-gray-200 { color: #0f172a !important; }
+        html[data-theme="light"] .text-gray-300 { color: #334155 !important; }
+        html[data-theme="light"] .text-gray-400 { color: #64748b !important; }
+        html[data-theme="light"] .text-green-400 { color: #047857 !important; }
+        html[data-theme="light"] .text-blue-400 { color: #1d4ed8 !important; }
+        html[data-theme="light"] .text-yellow-400 { color: #b45309 !important; }
+        html[data-theme="light"] .text-cyan-400 { color: #0e7490 !important; }
+        html[data-theme="light"] .badge { background: #f1f5f9; border-color: #e2e8f0; color: #0f172a; }
+        html[data-theme="light"] .badge-green { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
+        html[data-theme="light"] .badge-blue { background: #dbeafe; border-color: #93c5fd; color: #1e40af; }
+        html[data-theme="light"] .badge-yellow { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+        html[data-theme="light"] .badge-purple { background: #ede9fe; border-color: #c4b5fd; color: #5b21b6; }
+        html[data-theme="light"] .btn-ghost { background: #f1f5f9; border-color: #cbd5e1; color: #0f172a; }
+        html[data-theme="light"] .btn-ghost:hover { background: #e2e8f0; }
+        html[data-theme="light"] .toast { background: #fff; border-color: #e2e8f0; color: #0f172a; }
+        html[data-theme="light"] .skeleton { background: #e2e8f0; }
+        html[data-theme="light"] .proto { background: #f1f5f9; border-color: #cbd5e1; color: #1d4ed8; }
+        html[data-theme="light"] .bg-gray-700 { background: #e2e8f0 !important; }
+        html[data-theme="light"] .divide-gray-800 > * { border-color: #e2e8f0; }
+        html[data-theme="light"] .table-container::-webkit-scrollbar-thumb { background: #cbd5e1; }
+        html[data-theme="light"] .speedbar { background: #e2e8f0; }
+        html[data-theme="light"] .modal-box { background: #fff; }
+        html[data-theme="light"] .modal-box h3 { color: #0f172a; }
+        @media (max-width: 767px) {
+            html[data-theme="light"] .config-table .config-row { background: #f8fafc; border-color: #e2e8f0; }
+        }
+    </style>
+</head>
+<body class="text-gray-100 font-sans">
+    <div id="toasts" aria-live="polite"></div>
+    <header class="sticky-top glass border-b border-gray-800">
+        <div class="max-w-7xl mx-auto px-4 md:px-6 py-3 flex flex-wrap items-center gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-emerald-500 flex items-center justify-center text-xl shadow-lg">🌐</div>
+                <div class="min-w-0">
+                    <h1 class="text-lg md:text-xl font-extrabold tracking-tight truncate">Where is my VPN?</h1>
+                    <p class="text-xs text-gray-400 truncate">🔍 Актуальные конфигурации • автообновление</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 ml-auto flex-wrap">
+                <button id="themeToggle" onclick="toggleTheme()" class="btn btn-ghost icon-btn" title="Переключить светлую/тёмную тему" aria-label="Переключить тему">🌙</button>
+                <span class="badge badge-green" title="Всего рабочих">✅ <span id="statTotal" class="ml-1">0</span></span>
+                <span class="badge badge-yellow" title="Стабильные">⭐ <span id="statStable" class="ml-1">0</span></span>
+                <span class="badge badge-purple" title="ChatGPT доступен">💬 <span id="statGpt" class="ml-1">0</span></span>
+                <span class="badge"><span id="statusDot" class="w-2 h-2 bg-gray-500 rounded-full mr-2"></span><span id="statusText" class="text-xs text-gray-300">Инициализация...</span></span>
+            </div>
+        </div>
+        <nav class="max-w-7xl mx-auto px-4 md:px-6 pb-2 flex gap-2 text-xs overflow-x-auto" aria-label="Разделы">
+            <a href="#section-stable" class="btn btn-ghost">⭐ Стабильные</a>
+            <a href="#section-services" class="btn btn-ghost">💬 ChatGPT</a>
+            <a href="#section-black" class="btn btn-ghost">⚫ Black (igareck)</a>
+            <a href="#section-black2" class="btn btn-ghost">⚫ Black 2</a>
+            <a href="#section-white" class="btn btn-ghost">⚪ White</a>
+        </nav>
+    </header>
+    <div class="max-w-7xl mx-auto px-4 md:px-6 py-5">
+        <!-- Статус проверки -->
+        <div class="flex flex-wrap justify-between items-stretch mb-6 gap-4">
+            <div class="flex-1 min-w-[240px]">
+                <h2 class="text-2xl font-bold">Рабочие конфигурации</h2>
+                <p class="text-sm text-gray-400 mt-1">Двойная проверка VPN + HTTPS-проверка ChatGPT. Результаты появляются вживую, без перезагрузки.</p>
+                <p class="text-xs text-gray-500 mt-2">Автообновление активно • Интервал: <span id="intervalDisplay">60</span> сек • Следующее через: <span id="nextUpdate" class="text-blue-400 font-mono">—</span> • Обновлено: <span id="lastUpdate" class="text-green-400 font-mono">—</span></p>
+            </div>
+
+            <div id="statusPanel" class="glass px-4 py-3 rounded-2xl border border-gray-700 min-w-[300px] flex-1 md:max-w-[380px]">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-xs text-gray-400">Статус проверки</span>
+                </div>
+                <div id="progressContainer" class="hidden mt-2">
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-gray-400">Общий прогресс по файлам</span>
+                        <span id="progressPercent" class="text-blue-400 font-bold">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-700 rounded-full h-1.5">
+                        <div id="progressBar" class="bg-blue-500 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                    <div id="overallProgressText" class="text-xs text-gray-400 mt-1"></div>
+                    <div id="sourceName" class="text-xs text-gray-300 mt-3 break-all"></div>
+                    <div class="flex justify-between gap-3 text-xs my-1">
+                        <span id="sourcePhase" class="text-gray-400">Ожидание источника</span>
+                        <span id="sourcePercent" class="text-green-400 font-bold">—</span>
+                    </div>
+                    <div class="w-full bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                        <div id="sourceProgressBar" class="bg-green-500 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                    <div id="sourceProgressText" class="text-xs text-gray-400 mt-1"></div>
+                </div>
+                <div class="flex gap-4 text-xs text-gray-500 mt-2">
+                    <span>Проверено: <span id="checkedCount" class="font-mono text-gray-300">0</span></span>
+                    <span>Отброшено: <span id="failedCount" class="font-mono text-gray-300">0</span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- СТАБИЛЬНЫЕ -->
+        <section id="section-stable" class="mb-8 section-card scroll-mt-28">
+            <div class="section-head">
+                <span class="text-2xl">⭐</span>
+                <h2 class="text-xl font-bold text-gray-100">Стабильные конфигурации</h2>
+                <span id="badge-stable" class="badge badge-yellow">0</span>
+                <div class="toolbar table-controls">
+                    <label class="text-xs text-purple-300 cursor-pointer whitespace-nowrap"><input type="checkbox" id="gptFilter-stable" onchange="applyFilter('stable')"> 💬 ChatGPT доступен</label>
+                    <select id="countryFilterStable" onchange="applyFilter('stable')" aria-label="Страна" class="country-select">
+                        <option value="all">Все страны</option>
+                    </select>
+                    <select id="speedFilter-stable" onchange="applyFilter('stable')" aria-label="Минимальная скорость">
+                        <option value="0">Любая скорость</option><option value="5">От 5 Мбит/с</option>
+                        <option value="10">От 10 Мбит/с</option><option value="25">От 25 Мбит/с</option><option value="50">От 50 Мбит/с</option>
+                    </select>
+                    <select id="sort-stable" onchange="applyFilter('stable')" aria-label="Сортировка">
+                        <option value="ping">По пингу ↑</option><option value="speed">По скорости ↓</option>
+                        <option value="checks">По проверкам ↓</option>
+                    </select>
+                    <button onclick="copyAll('stable')" class="btn btn-success">📋 Копировать</button>
+                </div>
+            </div>
+            <p class="text-xs text-gray-400 px-4 pt-3">⭐ Стабильно — более 10 успешных проверок подряд (начиная с 11-й). Недоступные конфигурации удаляются при перепроверке.</p>
+            <p class="text-xs text-gray-500 px-4 pb-1">Скорость: тестовая загрузка 5 МиБ через VPN. Замеры старше часа помечаются устаревшими и не участвуют в фильтре.</p>
+            <div class="px-4 py-2 border-b border-gray-800 flex items-center gap-2">
+                <h3 class="font-bold text-green-400 text-sm">✅ Показано (<span id="showingStable">0</span>)</h3>
+                <span id="upd-Stable" class="ml-auto text-xs text-gray-500"></span>
+            </div>
+            <div class="table-container">
+                <table class="config-table w-full text-sm">
+                    <thead class="bg-gray-800/80 text-gray-400 text-xs sticky top-0 z-10">
+                        <tr>
+                            <th class="px-3 py-2 text-left w-10">#</th>
+                            <th class="px-3 py-2 text-left w-32 md:w-36">🌍 Страна</th>
+                            <th class="px-3 py-2 text-left">Хост</th>
+                            <th class="px-3 py-2 text-left w-20">⏱️ Пинг</th>
+                            <th class="px-3 py-2 text-left w-28">⚡ Мбит/с</th>
+                            <th class="px-3 py-2 text-right w-28">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="workingStable" class="divide-y divide-gray-800">
+                        <tr><td colspan="6" class="px-3 py-8 text-center text-gray-500"><div class="skeleton mx-auto max-w-md">&nbsp;</div><div class="mt-2">Загрузка данных...</div></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ChatGPT — сразу под стабильными -->
+        <section id="section-services" class="mb-8 section-card scroll-mt-28">
+            <div class="section-head">
+                <span class="text-2xl">💬</span>
+                <h2 class="text-xl font-bold text-gray-100">ChatGPT List</h2>
+                <span id="badge-services" class="badge badge-purple">0</span>
+                <div class="toolbar table-controls">
+                    <label class="text-xs text-yellow-400 cursor-pointer whitespace-nowrap"><input type="checkbox" id="stableFilter-services" onchange="applyFilter('services')"> ⭐ Только стабильные</label>
+                    <select id="countryFilterServices" onchange="applyFilter('services')" aria-label="Страна конфигураций для сервисов" class="country-select">
+                        <option value="all">Все страны</option>
+                    </select>
+                    <select id="speedFilter-services" onchange="applyFilter('services')" aria-label="Минимальная скорость">
+                        <option value="0">Любая скорость</option><option value="5">От 5 Мбит/с</option>
+                        <option value="10">От 10 Мбит/с</option><option value="25">От 25 Мбит/с</option><option value="50">От 50 Мбит/с</option>
+                    </select>
+                    <select id="sort-services" onchange="applyFilter('services')" aria-label="Сортировка">
+                        <option value="ping">По пингу ↑</option><option value="speed">По скорости ↓</option>
+                    </select>
+                    <button onclick="copyAll('services')" class="btn btn-success">📋 Копировать</button>
+                </div>
+            </div>
+            <p class="text-xs text-gray-400 px-4 pt-3">Конфигурации из Black и White листов с доступной страницей https://chatgpt.com/ (Chrome-профиль, без входа в аккаунт). Проверка отбрасывает блокировки и антибот-экраны.</p>
+            <div class="px-4 py-2 border-b border-gray-800 flex items-center gap-2">
+                <h3 class="font-bold text-green-400 text-sm">✅ ChatGPT доступен (<span id="showingServices">0</span>)</h3>
+                <span id="upd-Services" class="ml-auto text-xs text-gray-500"></span>
+            </div>
+            <div class="table-container">
+                <table class="config-table w-full text-sm">
+                    <thead class="bg-gray-800/80 text-gray-400 text-xs sticky top-0 z-10">
+                        <tr>
+                            <th class="px-3 py-2 text-left w-10">#</th>
+                            <th class="px-3 py-2 text-left w-32 md:w-36">🌍 Страна</th>
+                            <th class="px-3 py-2 text-left">Хост / проверка сервисов</th>
+                            <th class="px-3 py-2 text-left w-20">⏱️ Пинг VPN</th>
+                            <th class="px-3 py-2 text-left w-28">⚡ Мбит/с</th>
+                            <th class="px-3 py-2 text-right w-28">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="workingServices" class="divide-y divide-gray-800">
+                        <tr><td colspan="6" class="px-3 py-8 text-center text-gray-500">Ожидание результатов проверки сервисов...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- BLACK igareck -->
+        <section id="section-black" class="mb-8 section-card scroll-mt-28">
+            <div class="section-head">
+                <span class="text-2xl">⚫</span>
+                <h2 class="text-xl font-bold text-gray-100">Black List (igareck)</h2>
+                <span id="badge-black" class="badge">0</span>
+                <div class="toolbar table-controls">
+                    <label class="text-xs text-yellow-400 cursor-pointer whitespace-nowrap"><input type="checkbox" id="stableFilter-black" onchange="applyFilter('black')"> ⭐ Только стабильные</label>
+                    <select id="countryFilterBlack" onchange="applyFilter('black')" aria-label="Страна" class="country-select">
+                        <option value="all">Все страны</option>
+                    </select>
+                    <select id="speedFilter-black" onchange="applyFilter('black')" aria-label="Минимальная скорость">
+                        <option value="0">Любая скорость</option><option value="5">От 5 Мбит/с</option>
+                        <option value="10">От 10 Мбит/с</option><option value="25">От 25 Мбит/с</option><option value="50">От 50 Мбит/с</option>
+                    </select>
+                    <select id="sort-black" onchange="applyFilter('black')" aria-label="Сортировка">
+                        <option value="ping">По пингу ↑</option><option value="speed">По скорости ↓</option>
+                    </select>
+                    <button onclick="copyAll('black')" class="btn btn-success">📋 Копировать</button>
+                </div>
+            </div>
+            <div class="px-4 py-2 border-b border-gray-800 flex items-center gap-2">
+                <h3 class="font-bold text-green-400 text-sm">✅ Рабочие конфигурации (<span id="showingBlack">0</span>)</h3>
+                <span id="upd-Black" class="ml-auto text-xs text-gray-500"></span>
+            </div>
+            <div class="table-container">
+                <table class="config-table w-full text-sm">
+                    <thead class="bg-gray-800/80 text-gray-400 text-xs sticky top-0 z-10">
+                        <tr>
+                            <th class="px-3 py-2 text-left w-10">#</th>
+                            <th class="px-3 py-2 text-left w-32 md:w-36">🌍 Страна</th>
+                            <th class="px-3 py-2 text-left">Хост</th>
+                            <th class="px-3 py-2 text-left w-20">⏱️ Пинг</th>
+                            <th class="px-3 py-2 text-left w-28">⚡ Мбит/с</th>
+                            <th class="px-3 py-2 text-right w-28">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="workingBlack" class="divide-y divide-gray-800">
+                        <tr><td colspan="6" class="px-3 py-8 text-center text-gray-500">Загрузка данных...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- BLACK 2 -->
+        <section id="section-black2" class="mb-8 section-card scroll-mt-28">
+            <div class="section-head">
+                <span class="text-2xl">⚫</span>
+                <h2 class="text-xl font-bold text-gray-100">Black List 2</h2>
+                <span id="badge-black2" class="badge">0</span>
+                <div class="toolbar table-controls">
+                    <label class="text-xs text-yellow-400 cursor-pointer whitespace-nowrap"><input type="checkbox" id="stableFilter-black2" onchange="applyFilter('black2')"> ⭐ Только стабильные</label>
+                    <select id="sourceFilterBlack2" onchange="applyFilter('black2')" aria-label="Источник Black List 2">
+                        <option value="all">Все источники</option>
+                        <option value="goida">Goida VPN</option>
+                        <option value="manual">Ручной импорт</option>
+                        <option value="unknown">Старый пул</option>
+                    </select>
+                    <select id="countryFilterBlack2" onchange="applyFilter('black2')" aria-label="Страна" class="country-select">
+                        <option value="all">Все страны</option>
+                    </select>
+                    <select id="speedFilter-black2" onchange="applyFilter('black2')" aria-label="Минимальная скорость">
+                        <option value="0">Любая скорость</option><option value="5">От 5 Мбит/с</option>
+                        <option value="10">От 10 Мбит/с</option><option value="25">От 25 Мбит/с</option><option value="50">От 50 Мбит/с</option>
+                    </select>
+                    <select id="sort-black2" onchange="applyFilter('black2')" aria-label="Сортировка">
+                        <option value="ping">По пингу ↑</option><option value="speed">По скорости ↓</option>
+                    </select>
+                    <button onclick="copyAll('black2')" class="btn btn-success">📋 Копировать</button>
+                </div>
+            </div>
+            <div class="px-4 py-2 border-b border-gray-800 flex items-center gap-2">
+                <h3 class="font-bold text-green-400 text-sm">✅ Рабочие конфигурации (<span id="showingBlack2">0</span>)</h3>
+                <span id="upd-Black2" class="ml-auto text-xs text-gray-500"></span>
+            </div>
+            <div class="table-container">
+                <table class="config-table w-full text-sm">
+                    <thead class="bg-gray-800/80 text-gray-400 text-xs sticky top-0 z-10">
+                        <tr>
+                            <th class="px-3 py-2 text-left w-10">#</th>
+                            <th class="px-3 py-2 text-left w-32 md:w-36">🌍 Страна</th>
+                            <th class="px-3 py-2 text-left">Хост</th>
+                            <th class="px-3 py-2 text-left w-20">⏱️ Пинг</th>
+                            <th class="px-3 py-2 text-left w-28">⚡ Мбит/с</th>
+                            <th class="px-3 py-2 text-right w-28">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="workingBlack2" class="divide-y divide-gray-800">
+                        <tr><td colspan="6" class="px-3 py-8 text-center text-gray-500">Загрузка данных...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- БЕЛЫЕ СПИСКИ -->
+        <section id="section-white" class="mb-8 section-card scroll-mt-28">
+            <div class="section-head">
+                <span class="text-2xl">⚪</span>
+                <h2 class="text-xl font-bold text-gray-100">White List</h2>
+                <span id="badge-white" class="badge badge-blue">0</span>
+                <div class="toolbar table-controls">
+                    <label class="text-xs text-yellow-400 cursor-pointer whitespace-nowrap"><input type="checkbox" id="stableFilter-white" onchange="applyFilter('white')"> ⭐ Только стабильные</label>
+                    <select id="countryFilterWhite" onchange="applyFilter('white')" aria-label="Страна" class="country-select">
+                        <option value="all">Все страны</option>
+                    </select>
+                    <select id="speedFilter-white" onchange="applyFilter('white')" aria-label="Минимальная скорость">
+                        <option value="0">Любая скорость</option><option value="5">От 5 Мбит/с</option>
+                        <option value="10">От 10 Мбит/с</option><option value="25">От 25 Мбит/с</option><option value="50">От 50 Мбит/с</option>
+                    </select>
+                    <select id="sort-white" onchange="applyFilter('white')" aria-label="Сортировка">
+                        <option value="ping">По пингу ↑</option><option value="speed">По скорости ↓</option>
+                    </select>
+                    <button onclick="copyAll('white')" class="btn btn-success">📋 Копировать</button>
+                </div>
+            </div>
+            <div class="px-4 py-2 border-b border-gray-800 flex items-center gap-2">
+                <h3 class="font-bold text-green-400 text-sm">✅ Рабочие конфигурации (<span id="showingWhite">0</span>)</h3>
+                <span id="upd-White" class="ml-auto text-xs text-gray-500"></span>
+            </div>
+            <div class="table-container">
+                <table class="config-table w-full text-sm">
+                    <thead class="bg-gray-800/80 text-gray-400 text-xs sticky top-0 z-10">
+                        <tr>
+                            <th class="px-3 py-2 text-left w-10">#</th>
+                            <th class="px-3 py-2 text-left w-32 md:w-36">🌍 Страна</th>
+                            <th class="px-3 py-2 text-left">📍 Хост</th>
+                            <th class="px-3 py-2 text-left w-20">⏱️ Пинг</th>
+                            <th class="px-3 py-2 text-left w-28">⚡ Мбит/с</th>
+                            <th class="px-3 py-2 text-right w-28">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="workingWhite" class="divide-y divide-gray-800">
+                        <tr><td colspan="6" class="px-3 py-8 text-center text-gray-500">Загрузка данных...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <div class="mt-8 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500">
+            <span>Автообновление активно • Интервал: <span id="intervalDisplay2">60</span> сек</span>
+            <button onclick="window.scrollTo({top:0,behavior:'smooth'})" class="btn btn-ghost">↑ Наверх</button>
+        </div>
+    </div>
+
+    <script>
+        console.log("✅ СКРИПТ INDEX.HTML УСПЕШНО ЗАГРУЖЕН!");
+        
+        let publicData = { black: { working: [] }, white: { working: [] }, services: { working: [] }, status: {} };
+        let filteredData = { stable: [], black: [], black2: [], white: [], services: [] };
+        let countries = { stable: new Map(), black: new Map(), black2: new Map(), white: new Map(), services: new Map() };
+        let countdownSeconds = null;
+        let countdownInterval = null;
+
+        const tableTypes = ['stable', 'services', 'black', 'black2', 'white'];
+        function setupTables() {
+            // Секции уже заданы статично в разметке (SEO и надёжность вместо клонирования).
+            // Здесь только нормализация: thead содержит колонку скорости, colspan=6.
+            for (const type of tableTypes) {
+                const badge = document.getElementById(`badge-${type}`);
+                if (!badge) continue;
+                const section = badge.closest('section') || badge.parentElement.parentElement;
+                section.querySelectorAll('[colspan]').forEach(cell => cell.colSpan = 6);
+            }
+        }
+
+        function toast(message, kind = 'info') {
+            const box = document.getElementById('toasts');
+            if (!box) return;
+            const el = document.createElement('div');
+            el.className = `toast ${kind === 'success' ? 'success' : kind === 'error' ? 'error' : ''}`;
+            el.textContent = message;
+            box.appendChild(el);
+            setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 320); }, 2600);
+        }
+
+        function protocolOf(uri) {
+            const m = String(uri || '').match(/^([a-z0-9]+):\/\//i);
+            return (m ? m[1] : 'vpn').toLowerCase();
+        }
+
+        function initTheme() {
+            let t = 'dark';
+            try { t = localStorage.getItem('wiv-theme') || 'dark'; } catch (e) {}
+            document.documentElement.dataset.theme = t;
+            const b = document.getElementById('themeToggle');
+            if (b) b.textContent = t === 'light' ? '☀️' : '🌙';
+        }
+
+        function toggleTheme() {
+            const cur = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+            document.documentElement.dataset.theme = cur;
+            try { localStorage.setItem('wiv-theme', cur); } catch (e) {}
+            const b = document.getElementById('themeToggle');
+            if (b) b.textContent = cur === 'light' ? '☀️' : '🌙';
+        }
+
+        function flagEmoji(code) {
+            if (!code || code.length !== 2) return '';
+            code = code.toUpperCase() === 'UK' ? 'GB' : code.toUpperCase();
+            if (!/^[A-Z]{2}$/.test(code)) return '';
+            return String.fromCodePoint(...[...code].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
+        }
+
+        function timeAgo(ts) {
+            const s = Math.max(0, (Date.now() - ts) / 1000);
+            if (s < 60) return 'только что';
+            const m = Math.floor(s / 60);
+            if (m < 60) return `${m} мин назад`;
+            const h = Math.floor(m / 60);
+            if (h < 24) return `${h} ч назад`;
+            return `${Math.floor(h / 24)} дн назад`;
+        }
+
+        function parseRuDate(str) {
+            const m = /^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}):(\d{2})/.exec(str || '');
+            if (!m) return null;
+            return new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], +m[6]).getTime();
+        }
+
+        function setupQrPreview() {
+            if (window.matchMedia && window.matchMedia('(hover: none)').matches) return;
+            let box = null;
+            const hide = () => { if (box) { box.remove(); box = null; } };
+            document.addEventListener('scroll', hide, true);
+            document.addEventListener('mouseover', (e) => {
+                const btn = e.target.closest ? e.target.closest('.qr-btn') : null;
+                if (!btn || !btn.dataset.qr) { return; }
+                hide();
+                box = document.createElement('div');
+                box.id = 'qrPreview';
+                const img = document.createElement('img');
+                img.alt = 'QR-превью';
+                img.src = `/api/qr?uri=${btn.dataset.qr}`;
+                box.appendChild(img);
+                document.body.appendChild(box);
+                const r = btn.getBoundingClientRect();
+                box.style.top = `${Math.max(8, r.top - 160)}px`;
+                box.style.left = `${Math.max(8, Math.min(window.innerWidth - 164, r.left - 150))}px`;
+                const done = (ev) => {
+                    if (!box) return;
+                    const to = ev.relatedTarget;
+                    if (to && to.closest && (to.closest('.qr-btn') === btn || to.closest('#qrPreview'))) return;
+                    hide();
+                    btn.removeEventListener('mouseout', done);
+                };
+                btn.addEventListener('mouseout', done);
+            });
+        }
+
+        function updateSectionUpd() {
+            const at = {
+                Stable: newestUpdate(), Black: publicData.black?.last_update,
+                Black2: publicData.black?.last_update, White: publicData.white?.last_update,
+                Services: newestUpdate()
+            };
+            for (const [suffix, raw] of Object.entries(at)) {
+                const el = document.getElementById(`upd-${suffix}`);
+                if (!el) continue;
+                const ts = parseRuDate(raw);
+                el.textContent = ts ? `обновлено ${timeAgo(ts)}` : '';
+            }
+        }
+
+        function newestUpdate() {
+            const ts = [publicData.black?.last_update, publicData.white?.last_update]
+                .map(parseRuDate).filter(Boolean);
+            if (!ts.length) return null;
+            const best = Math.max(...ts);
+            const d = new Date(best);
+            const p = n => String(n).padStart(2, '0');
+            return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+        }
+
+        function currentSpeed(config) {
+            const speed = config.speed;
+            return speed && Number.isFinite(speed.mbps) && Date.now() / 1000 - speed.checked_at <= 3 * 60 * 60 ? speed.mbps : null;
+        }
+
+        function compareConfigs(a, b, type, sort) {
+            const stableFirst = type === 'services' ? Number(!!b.stable) - Number(!!a.stable) : 0;
+            return stableFirst || (sort === 'speed' ? (currentSpeed(b) ?? -1) - (currentSpeed(a) ?? -1)
+                : sort === 'checks' ? ((b.successful_checks ?? 0) - (a.successful_checks ?? 0)) : 0)
+                || (a.latency || 0) - (b.latency || 0);
+        }
+
+        function speedCell(config) {
+            const speed = config.speed;
+            if (!speed) return '<span class="text-gray-500" title="Замер ещё не выполнен; проверяются только стабильные">—</span>';
+            const date = new Date(speed.checked_at * 1000).toLocaleString('ru-RU');
+            if (!Number.isFinite(speed.mbps)) return `<span class="text-gray-500" title="${escapeHtml(date + ': ' + (speed.error || 'Замер не выполнен'))}">Нет замера</span>`;
+            const stale = currentSpeed(config) === null;
+            const pct = Math.max(4, Math.min(100, speed.mbps / 50 * 100));
+            const age = timeAgo(speed.checked_at * 1000);
+            return `<span class="${stale ? 'text-gray-500' : 'text-cyan-400'}" title="${escapeHtml(date)}">${speed.mbps.toFixed(2)}</span>`
+                + `<div class="speedbar" title="${escapeHtml(date)}"><i style="width:${pct}%"></i></div>`
+                + `<div class="text-xs ${stale ? 'text-gray-500' : 'text-gray-400'}">${stale ? `Устарело • ${escapeHtml(age)}` : escapeHtml(age)}</div>`;
+        }
+
+        function tableWorking(type) {
+            const black = publicData.black?.working || [];
+            if (type === 'black') return black.filter(c => c.source === 'igareck');
+            if (type === 'black2') return black.filter(c => c.source !== 'igareck');
+            if (type === 'stable') {
+                return [...new Map([...black, ...(publicData.white?.working || [])]
+                    .filter(c => c.stable).map(c => [c.uri, c])).values()];
+            }
+            return publicData[type]?.working || [];
+        }
+
+        function refreshTables() {
+            for (const type of tableTypes) {
+                extractCountries(type);
+                renderResults(type);
+            }
+            updateBadges();
+        }
+
+        function connectLiveResults() {
+            const stream = new EventSource('/api/public/events');
+            stream.onmessage = event => {
+                const data = JSON.parse(event.data);
+                publicData.status = data.status;
+                let changed = false;
+                for (const type of ['black', 'white', 'services']) {
+                    const update = data[type];
+                    changed ||= update.reset || update.working.length > 0;
+                    if (update.reset) publicData[type].working = [];
+                    for (const config of update.working) {
+                        publicData[type].working.push(config);
+                    }
+                    // У services в событии только reset+working — не затираем
+                    // отсутствующие поля в undefined.
+                    if (update.failed_count !== undefined) publicData[type].failed_count = update.failed_count;
+                    if (update.last_update !== undefined) publicData[type].last_update = update.last_update;
+                }
+                if (changed) refreshTables();
+                updateStatusPanel();
+                updateBadges();
+            };
+            stream.onerror = () => {
+                document.getElementById('statusText').textContent = 'Восстанавливаем связь с сервером…';
+                // EventSource переподключится автоматически и получит полный снимок.
+            };
+            window.addEventListener('pagehide', () => stream.close(), { once: true });
+        }
+
+        async function loadPublicData() {
+            console.log("🔄 Запрос данных с сервера...");
+            try {
+                const response = await fetch('/api/public/status');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                console.log("✅ Данные получены:", data.status);
+                
+                publicData = data;
+                refreshTables();
+                updateStatusPanel();
+                renderResults('black');
+                renderResults('white');
+                renderResults('services');
+                updateBadges();
+            } catch (e) {
+                console.error("❌ Ошибка загрузки данных:", e);
+                document.getElementById('statusText').textContent = "Ошибка связи с сервером";
+            }
+        }
+
+        function extractCountries(type) {
+            countries[type] = new Map();
+            const working = tableWorking(type);
+            working.forEach(c => {
+                const info = extractConfigInfo(c.uri);
+                if (info.country && info.country !== 'Неизвестно' && !countries[type].has(info.country)) {
+                    countries[type].set(info.country, info.code || null);
+                }
+            });
+            updateCountryFilter(type);
+        }
+
+        function updateCountryFilter(type) {
+            const select = document.getElementById(`countryFilter${type.charAt(0).toUpperCase() + type.slice(1)}`);
+            const currentValue = select.value;
+            const sortedCountries = Array.from(countries[type].keys()).sort();
+
+            select.innerHTML = '<option value="all">Все страны</option>';
+            sortedCountries.forEach(country => {
+                const opt = document.createElement('option');
+                opt.value = country;
+                const flag = flagEmoji(countries[type].get(country));
+                opt.textContent = flag ? `${flag} ${country}` : country;
+                select.appendChild(opt);
+            });
+            if (sortedCountries.includes(currentValue)) select.value = currentValue;
+        }
+
+        function updateStatusPanel() {
+            const status = publicData.status;
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            const lastUpdateEl = document.getElementById('lastUpdate');
+            const nextUpdateEl = document.getElementById('nextUpdate');
+            const progressContainer = document.getElementById('progressContainer');
+            
+            const lastUpdate = publicData.black.last_update || publicData.white.last_update;
+            lastUpdateEl.textContent = lastUpdate || '—';
+            
+            if (status.is_checking) {
+                dot.className = 'w-2 h-2 bg-blue-500 rounded-full pulse-blue';
+                const typeName = status.check_type === 'both' ? 'всех источников' : status.check_type === 'black' ? 'Black List' : 'White List';
+                const found = status.check_type === 'both' ? publicData.black.working.length + publicData.white.working.length : publicData[status.check_type]?.working.length || 0;
+                text.textContent = `Проверка ${typeName}: найдено ${found}. Результаты уже доступны ниже.`;
+                progressContainer.classList.remove('hidden');
+                const progress = status.progress;
+                const pct = progress.total > 0 ? progress.current / progress.total * 100 : 0;
+                document.getElementById('progressPercent').textContent = formatProgress(pct);
+                document.getElementById('progressBar').style.width = `${pct}%`;
+                document.getElementById('overallProgressText').textContent =
+                    `Завершено конфигураций: ${progress.current || 0} / ${progress.total || 0}. Источников: ${progress.sources_done || 0} / ${progress.sources_total || 0}. Ошибок обновления файлов: ${progress.sources_skipped || 0}.`;
+                updateSourceProgress(progress.source);
+                nextUpdateEl.textContent = '—';
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            } else {
+                dot.className = 'w-2 h-2 bg-green-500 rounded-full pulse';
+                text.textContent = 'Готово';
+                progressContainer.classList.add('hidden');
+                
+                if (status.seconds_until_next !== null && status.seconds_until_next > 0) {
+                    countdownSeconds = status.seconds_until_next;
+                    updateCountdownDisplay(nextUpdateEl);
+                    if (!countdownInterval) {
+                        countdownInterval = setInterval(() => {
+                            countdownSeconds--;
+                            if (countdownSeconds <= 0) {
+                                clearInterval(countdownInterval);
+                                countdownInterval = null;
+                            } else {
+                                updateCountdownDisplay(nextUpdateEl);
+                            }
+                        }, 1000);
+                    }
+                } else {
+                    nextUpdateEl.textContent = '—';
+                }
+            }
+            document.getElementById('intervalDisplay').textContent = status.interval_seconds || 60;
+            const dup = document.getElementById('intervalDisplay2');
+            if (dup) dup.textContent = status.interval_seconds || 60;
+            const checkedEl = document.getElementById('checkedCount');
+            if (checkedEl) checkedEl.textContent = (status.progress && status.progress.checked) || 0;
+            const failedEl = document.getElementById('failedCount');
+            if (failedEl) failedEl.textContent = (publicData.black.failed_count || 0) + (publicData.white.failed_count || 0);
+            updateSectionUpd();
+        }
+
+        function formatProgress(percent) {
+            if (percent > 0 && percent < 0.01) return '<0.01%';
+            if (percent < 100 && percent > 99.99) return '>99.99%';
+            return `${percent.toFixed(2)}%`;
+        }
+
+        function updateSourceProgress(source) {
+            const bar = document.getElementById('sourceProgressBar');
+            const phases = {
+                downloading: 'Загрузка файла', preparing: 'Подготовка конфигураций',
+                checking: 'Проверка конфигураций', done: 'Пул обработан', skipped: 'Пропущен'
+            };
+            document.getElementById('sourceName').textContent = source ? (source.pool ? source.name : `Источник ${source.index}: ${source.name}`) : '';
+            document.getElementById('sourcePhase').textContent = phases[source?.phase] || 'Ожидание источника';
+            let current = source?.current || 0;
+            let total = source?.total || 0;
+            let detail = `${current} / ${total} конфигураций`;
+            if (source?.phase === 'downloading') {
+                current = source.bytes;
+                total = source.bytes_total;
+                const mb = bytes => (bytes / 1048576).toFixed(2);
+                detail = `Загружено ${mb(current)} МБ${total ? ` / ${mb(total)} МБ` : ' (размер неизвестен)'}`;
+            } else if (source?.phase === 'preparing') {
+                detail = `Файлов каталога: ${current} / ${total || '—'}. ${source.message || ''}`;
+            } else if (source?.phase === 'skipped') {
+                detail = source.message;
+            } else if (source) {
+                detail += `; повторов пропущено: ${source.duplicates}. ${source.message || ''}`;
+            }
+            if (source?.scope_quotas) {
+                detail += ' Доли в пуле: ' + Object.entries(source.scope_quotas).map(([name, count]) => `${name}: ${count}`).join('; ');
+            }
+            const finished = source && ['done', 'skipped'].includes(source.phase);
+            const pct = finished ? 100 : total ? current / total * 100 : 0;
+            const indeterminate = !finished && !total;
+            bar.classList.toggle('animate-pulse', indeterminate);
+            bar.style.width = indeterminate ? '30%' : `${pct}%`;
+            document.getElementById('sourcePercent').textContent = indeterminate ? '…' : formatProgress(pct);
+            document.getElementById('sourceProgressText').textContent = source ? detail : 'Подключение к источнику…';
+        }
+
+        function updateCountdownDisplay(el) {
+            if (countdownSeconds === null) return;
+            const m = Math.floor(countdownSeconds / 60);
+            const s = countdownSeconds % 60;
+            el.textContent = m > 0 ? `${m}м ${s}с` : `${s}с`;
+        }
+
+        function updateBadges() {
+            for (const type of tableTypes) {
+                const el = document.getElementById(`badge-${type}`);
+                if (el) el.textContent = tableWorking(type).length;
+            }
+            const all = [...(publicData.black?.working || []), ...(publicData.white?.working || [])];
+            const total = document.getElementById('statTotal');
+            if (total) total.textContent = new Set(all.map(c => c.uri)).size;
+            const stable = document.getElementById('statStable');
+            if (stable) stable.textContent = new Set(all.filter(c => c.stable).map(c => c.uri)).size;
+            const gpt = document.getElementById('statGpt');
+            if (gpt) gpt.textContent = tableWorking('services').length;
+        }
+
+        function applyFilter(type) {
+            renderResults(type);
+        }
+
+        function renderResults(type) {
+            const tbody = document.getElementById(`working${type.charAt(0).toUpperCase() + type.slice(1)}`);
+            const sourceFilter = type === 'black2' ? document.getElementById('sourceFilterBlack2').value : 'all';
+            const stableOnly = document.getElementById(`stableFilter-${type}`)?.checked;
+            const gptOnly = type === 'stable' ? document.getElementById('gptFilter-stable')?.checked : false;
+            const minSpeed = Number(document.getElementById(`speedFilter-${type}`).value);
+            const sort = document.getElementById(`sort-${type}`).value;
+            const working = tableWorking(type).filter(c => (!stableOnly || c.stable) && (!gptOnly || c.services?.results?.gpt?.ok === true) && (!minSpeed || (currentSpeed(c) ?? -1) >= minSpeed) && (sourceFilter === 'all' || (c.source || 'unknown') === sourceFilter));
+            const filter = document.getElementById(`countryFilter${type.charAt(0).toUpperCase() + type.slice(1)}`).value;
+
+            const sorted = [...working].sort((a, b) => compareConfigs(a, b, type, sort));
+            const filtered = filter === 'all' ? sorted : sorted.filter(c => extractConfigInfo(c.uri).country === filter);
+            
+            filteredData[type] = filtered;
+            document.getElementById(`showing${type.charAt(0).toUpperCase() + type.slice(1)}`).textContent = filtered.length;
+
+            if (filtered.length === 0) {
+                const hint = working.length === 0
+                    ? 'Пока нет данных — идёт проверка, результаты появятся автоматически.'
+                    : 'Нет конфигураций по выбранным фильтрам. Попробуйте смягчить условия или сбросить фильтры.';
+                tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-10 text-center text-gray-500"><div class="text-3xl mb-2">🔎</div><div class="font-semibold text-gray-300">Ничего не найдено</div><div class="text-xs mt-1">${hint}</div><button onclick="resetFilters('${type}')" class="btn btn-ghost mt-3">Сбросить фильтры</button></td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map((c, i) => {
+                const info = extractConfigInfo(c.uri);
+                const pingClass = c.latency <= 100 ? 'ping-good' : c.latency <= 300 ? 'ping-medium' : 'ping-bad';
+                const serviceDetails = renderServiceDetails(c, type);
+                const stableMeta = type === 'stable' ? renderStableMeta(c) : '';
+                return `
+                    <tr class="config-row">
+                        <td class="px-3 py-2 text-gray-400">${i + 1}${c.stable ? '<div class="text-yellow-400" title="Более 10 успешных проверок подряд">⭐</div>' : ''}</td>
+                        <td class="px-3 py-2 country-cell" title="${escapeHtml(info.country)}">${info.code ? flagEmoji(info.code) + ' ' : ''}${escapeHtml(info.country)}</td>
+                        <td class="px-3 py-2 font-mono text-xs host-cell"><span class="server-address"><span class="proto">${escapeHtml(protocolOf(c.uri))}</span>${escapeHtml(info.host)}:${escapeHtml(info.port)}</span><div class="text-gray-400">${escapeHtml(({igareck: 'igareck', goida: 'Goida VPN', manual: 'Ручной импорт', unknown: 'Старый пул'})[c.source || 'unknown'] || 'Старый пул')}</div>${stableMeta}${serviceDetails}</td>
+                        <td class="px-3 py-2 metric-cell" data-label="Пинг"><span class="${pingClass} ping-badge">${c.latency || 0} мс</span>${c.stable ? '<div class="text-yellow-400 text-xs">Стабильно</div>' : ''}</td>
+                        <td class="px-3 py-2 metric-cell" data-label="Скорость, Мбит/с">${speedCell(c)}</td>
+                        <td class="px-3 py-2 text-right actions-cell">
+                            <div class="flex gap-2 justify-end">
+                                <button onclick="showQR('${encodeURIComponent(c.uri).replace(/'/g, '%27')}')" data-qr="${encodeURIComponent(c.uri).replace(/'/g, '%27')}" class="qr-btn btn btn-ghost icon-btn" title="QR-код для телефона" aria-label="Показать QR-код">📱</button>
+                                <button onclick="copyToClipboard('${encodeURIComponent(c.uri).replace(/'/g, '%27')}', this)" class="copy-btn btn btn-primary icon-btn" title="Скопировать URI" aria-label="Скопировать URI">📋</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderStableMeta(config) {
+            const checks = config.successful_checks ?? 0;
+            const addedRaw = config.added_at || '';
+            const addedTs = parseRuDate(addedRaw);
+            const addedAge = addedTs ? ` • ${timeAgo(addedTs)}` : '';
+            const addedText = addedRaw ? `${escapeHtml(addedRaw)}${escapeHtml(addedAge)}` : '—';
+            return `<div class="text-gray-400">✅ Проверок подряд: <span class="text-gray-200 font-semibold">${checks}</span></div>`
+                + `<div class="text-gray-400">📅 Добавлена: ${addedText}</div>`;
+        }
+
+        function renderServiceDetails(config, type) {
+            const services = config.services || {};
+            const gpt = services.results?.gpt;
+            const status = gpt?.ok === true ? '✓ ChatGPT доступен'
+                : gpt?.ok === false ? 'ChatGPT: доступ не подтверждён' : 'ChatGPT: ещё не проверен';
+            const color = gpt?.ok === true ? 'text-green-400' : 'text-gray-400';
+            const lists = type === 'services' ? `<div class="text-gray-400">${escapeHtml((config.lists || []).map(t => t === 'black' ? 'Black List' : 'White List').join(' + '))}</div>` : '';
+            const svcTs = parseRuDate(services.checked_at);
+            const svcAge = svcTs ? ` • ${timeAgo(svcTs)}` : '';
+            return `<div class="${color} mt-1" title="${escapeHtml(gpt?.error || '')}">${status}</div>${lists}
+                <div class="text-gray-400">Проверка сервисов: ${escapeHtml(services.checked_at || 'ещё не выполнялась')}${escapeHtml(svcAge)}</div>`;
+        }
+
+        const COUNTRY_NAMES = { AD: 'Андорра', AE: 'ОАЭ', AF: 'Афганистан', AG: 'Антигуа и Барбуда', AI: 'Ангилья', AL: 'Албания', AM: 'Армения', AO: 'Ангола', AR: 'Аргентина', AS: 'Американское Самоа', AT: 'Австрия', AU: 'Австралия', AW: 'Аруба', AX: 'Аландские острова', AZ: 'Азербайджан', BA: 'Босния и Герцеговина', BB: 'Барбадос', BD: 'Бангладеш', BE: 'Бельгия', BF: 'Буркина-Фасо', BG: 'Болгария', BH: 'Бахрейн', BI: 'Бурунди', BJ: 'Бенин', BM: 'Бермуды', BN: 'Бруней', BO: 'Боливия', BR: 'Бразилия', BS: 'Багамы', BT: 'Бутан', BW: 'Ботсвана', BY: 'Беларусь', BZ: 'Белиз', CA: 'Канада', CC: 'Кокосовые острова', CD: 'ДР Конго', CF: 'ЦАР', CG: 'Конго', CH: 'Швейцария', CI: 'Кот-д’Ивуар', CK: 'Острова Кука', CL: 'Чили', CM: 'Камерун', CN: 'Китай', CO: 'Колумбия', CR: 'Коста-Рика', CU: 'Куба', CV: 'Кабо-Верде', CW: 'Кюрасао', CY: 'Кипр', CZ: 'Чехия', DE: 'Германия', DJ: 'Джибути', DK: 'Дания', DM: 'Доминика', DO: 'Доминикана', DZ: 'Алжир', EC: 'Эквадор', EE: 'Эстония', EG: 'Египет', ER: 'Эритрея', ES: 'Испания', ET: 'Эфиопия', EU: 'Евросоюз', FI: 'Финляндия', FJ: 'Фиджи', FK: 'Фолклендские острова', FM: 'Микронезия', FO: 'Фарерские острова', FR: 'Франция', GA: 'Габон', GB: 'Великобритания', UK: 'Великобритания', GD: 'Гренада', GE: 'Грузия', GF: 'Французская Гвиана', GH: 'Гана', GI: 'Гибралтар', GL: 'Гренландия', GM: 'Гамбия', GN: 'Гвинея', GP: 'Гваделупа', GQ: 'Экваториальная Гвинея', GR: 'Греция', GT: 'Гватемала', GU: 'Гуам', GW: 'Гвинея-Бисау', GY: 'Гайана', HK: 'Гонконг', HN: 'Гондурас', HR: 'Хорватия', HT: 'Гаити', HU: 'Венгрия', IC: 'Канарские острова', ID: 'Индонезия', IE: 'Ирландия', IL: 'Израиль', IM: 'о. Мэн', IN: 'Индия', IQ: 'Ирак', IR: 'Иран', IS: 'Исландия', IT: 'Италия', JE: 'Джерси', JM: 'Ямайка', JO: 'Иордания', JP: 'Япония', KE: 'Кения', KG: 'Киргизия', KH: 'Камбоджа', KI: 'Кирибати', KM: 'Коморы', KN: 'Сент-Китс и Невис', KP: 'Северная Корея', KR: 'Южная Корея', KW: 'Кувейт', KY: 'Каймановы острова', KZ: 'Казахстан', LA: 'Лаос', LB: 'Ливан', LC: 'Сент-Люсия', LI: 'Лихтенштейн', LK: 'Шри-Ланка', LR: 'Либерия', LS: 'Лесото', LT: 'Литва', LU: 'Люксембург', LV: 'Латвия', LY: 'Ливия', MA: 'Марокко', MC: 'Монако', MD: 'Молдова', ME: 'Черногория', MG: 'Мадагаскар', MH: 'Маршалловы Острова', MK: 'Северная Македония', ML: 'Мали', MM: 'Мьянма', MN: 'Монголия', MO: 'Макао', MP: 'Северные Марианские острова', MQ: 'Мартиника', MR: 'Мавритания', MS: 'Монтсеррат', MT: 'Мальта', MU: 'Маврикий', MV: 'Мальдивы', MW: 'Малави', MX: 'Мексика', MY: 'Малайзия', MZ: 'Мозамбик', NA: 'Намибия', NC: 'Новая Каледония', NE: 'Нигер', NG: 'Нигерия', NI: 'Никарагуа', NL: 'Нидерланды', NO: 'Норвегия', NP: 'Непал', NR: 'Науру', NU: 'Ниуэ', NZ: 'Новая Зеландия', OM: 'Оман', PA: 'Панама', PE: 'Перу', PF: 'Французская Полинезия', PG: 'Папуа — Новая Гвинея', PH: 'Филиппины', PK: 'Пакистан', PL: 'Польша', PM: 'Сен-Пьер и Микелон', PR: 'Пуэрто-Рико', PS: 'Палестина', PT: 'Португалия', PW: 'Палау', PY: 'Парагвай', QA: 'Катар', RE: 'Реюньон', RO: 'Румыния', RS: 'Сербия', RU: 'Россия', RW: 'Руанда', SA: 'Саудовская Аравия', SB: 'Соломоновы Острова', SC: 'Сейшелы', SD: 'Судан', SE: 'Швеция', SG: 'Сингапур', SH: 'о. Святой Елены', SI: 'Словения', SK: 'Словакия', SL: 'Сьерра-Леоне', SM: 'Сан-Марино', SN: 'Сенегал', SO: 'Сомали', SR: 'Суринам', SS: 'Южный Судан', ST: 'Сан-Томе и Принсипи', SV: 'Сальвадор', SY: 'Сирия', SZ: 'Эсватини', TD: 'Чад', TG: 'Того', TH: 'Таиланд', TJ: 'Таджикистан', TL: 'Восточный Тимор', TM: 'Туркменистан', TN: 'Тунис', TO: 'Тонга', TR: 'Турция', TT: 'Тринидад и Тобаго', TV: 'Тувалу', TW: 'Тайвань', TZ: 'Танзания', UA: 'Украина', UG: 'Уганда', US: 'США', UY: 'Уругвай', UZ: 'Узбекистан', VA: 'Ватикан', VC: 'Сент-Винсент и Гренадины', VE: 'Венесуэла', VG: 'Британские Виргинские острова', VI: 'Американские Виргинские острова', VN: 'Вьетнам', VU: 'Вануату', WS: 'Самоа', YE: 'Йемен', YT: 'Майотта', ZA: 'ЮАР', ZM: 'Замбия', ZW: 'Зимбабве' };
+        function flagToCode(str) {
+            const m = str.match(/[\u{1F1E6}-\u{1F1FF}]{2}/u);
+            if (!m) return null;
+            const chars = [...m[0]];
+            return chars.map(c => String.fromCharCode(c.codePointAt(0) - 0x1F1E6 + 65)).join('');
+        }
+        function codeToCountry(code) {
+            if (!code) return null;
+            code = code.toUpperCase();
+            return COUNTRY_NAMES[code] || code;
+        }
+        function extractConfigInfo(uri) {
+            try {
+                const hashIndex = uri.indexOf('#');
+                let comment = '', baseUri = uri;
+                if (hashIndex !== -1) {
+                    comment = uri.substring(hashIndex + 1);
+                    baseUri = uri.substring(0, hashIndex);
+                }
+                let url;
+                if (baseUri.startsWith('vmess://')) {
+                    const payload = baseUri.slice(8).replace(/-/g, '+').replace(/_/g, '/');
+                    const bytes = Uint8Array.from(atob(payload.padEnd(Math.ceil(payload.length / 4) * 4, '=')), c => c.charCodeAt(0));
+                    const config = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+                    if (typeof config.add !== 'string' || !config.add) throw new Error('Invalid VMess host');
+                    url = { hostname: config.add, port: String(config.port || 443) };
+                    if (!comment) comment = encodeURIComponent(config.ps || '');
+                } else {
+                    url = new URL(baseUri);
+                }
+                let country = 'Неизвестно';
+                let code = null;
+                if (comment) {
+                    try {
+                        const decoded = decodeURIComponent(comment);
+                        const beforePipe = decoded.split('|')[0].trim();
+                        // Формат нового источника: [OpenRay] 🇨🇦 CA-20988 — код страны после тега
+                        const openRay = beforePipe.match(/\[OpenRay\][\s\S]*?([A-Z]{2})-\d+/i);
+                        if (openRay) {
+                            code = openRay[1].toUpperCase();
+                            country = codeToCountry(code) || url.hostname;
+                        } else {
+                            const flagCode = flagToCode(beforePipe);
+                            if (flagCode && codeToCountry(flagCode) && /\[.*\]/.test(beforePipe)) {
+                                code = flagCode.toUpperCase();
+                                country = codeToCountry(code);
+                            } else {
+                                country = beforePipe.replace(/[\u{1F1E6}-\u{1F1FF}]{2}/gu, '').replace(/\[.*?\]/g, '').split(',')[0].trim() || url.hostname;
+                            }
+                        }
+                    } catch (e) { country = url.hostname; }
+                } else { country = url.hostname; }
+                return { country, code, host: url.hostname, port: url.port || '443' };
+            } catch (e) { return { country: 'Ошибка', code: null, host: 'N/A', port: 'N/A' }; }
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+        }
+
+        async function writeClipboard(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                return;
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                try { await navigator.clipboard.writeText(text); return; } catch (e) { /* fallback ниже */ }
+            }
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            textarea.style.top = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            try {
+                if (!document.execCommand('copy')) throw new Error('copy denied');
+            } finally {
+                document.body.removeChild(textarea);
+            }
+        }
+
+        function copyToClipboard(text, btn) {
+            const decodedText = decodeURIComponent(text);
+            writeClipboard(decodedText).then(() => {
+                toast('URI скопирован в буфер обмена', 'success');
+                if (btn) {
+                    const original = btn.innerHTML;
+                    btn.innerHTML = '✅';
+                    setTimeout(() => { btn.innerHTML = original; }, 1500);
+                }
+            }).catch(err => {
+                console.error('Ошибка копирования:', err);
+                toast('Не удалось скопировать. Скопируйте вручную.', 'error');
+            });
+        }
+
+        function copyAll(type) {
+            const list = filteredData[type]
+                || (typeof tableWorking === 'function' ? tableWorking(type) : null)
+                || publicData[type]?.working || [];
+            if (list.length === 0) {
+                toast('Нет конфигураций для копирования', 'error');
+                return;
+            }
+            const text = list.map(c => c.uri).join('\n');
+            writeClipboard(text).then(() => {
+                toast(`Скопировано конфигураций: ${list.length}`, 'success');
+            }).catch(err => {
+                console.error('Ошибка копирования:', err);
+                toast('Не удалось скопировать. Скопируйте вручную.', 'error');
+            });
+        }
+
+        function resetFilters(type) {
+            const suffix = type.charAt(0).toUpperCase() + type.slice(1);
+            const country = document.getElementById(`countryFilter${suffix}`);
+            if (country) country.value = 'all';
+            const stable = document.getElementById(`stableFilter-${type}`);
+            if (stable) stable.checked = false;
+            const gpt = document.getElementById('gptFilter-stable');
+            if (gpt && type === 'stable') gpt.checked = false;
+            const speed = document.getElementById(`speedFilter-${type}`);
+            if (speed) speed.value = '0';
+            const sort = document.getElementById(`sort-${type}`);
+            if (sort) sort.value = 'ping';
+            const source = document.getElementById('sourceFilterBlack2');
+            if (source && type === 'black2') source.value = 'all';
+            applyFilter(type);
+            toast('Фильтры сброшены', 'success');
+        }
+
+        function showQR(uri) {
+            const decodedUri = decodeURIComponent(uri);
+            const info = extractConfigInfo(decodedUri);
+            const modal = document.createElement('div');
+            modal.className = 'modal-backdrop';
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+            modal.innerHTML = `
+                <div class="modal-box rounded-2xl p-6 max-w-sm w-full border border-gray-700 shadow-2xl" role="dialog" aria-modal="true" aria-label="QR-код">
+                    <div class="flex justify-between items-center mb-1">
+                        <h3 class="text-lg font-bold text-white">QR-код для телефона</h3>
+                        <button onclick="this.closest('.modal-backdrop').remove()" class="btn btn-ghost icon-btn" aria-label="Закрыть">×</button>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-4 font-mono break-all">${escapeHtml(info.host)}:${escapeHtml(info.port)} • ${escapeHtml(info.country)}</p>
+                    <div class="bg-white p-4 rounded-xl mb-4 flex justify-center">
+                        <img src="/api/qr?uri=${encodeURIComponent(decodedUri)}" alt="QR Code" class="max-w-full h-auto" style="image-rendering: pixelated;" loading="lazy">
+                    </div>
+                    <p class="text-xs text-gray-400 text-center mb-4">Отсканируйте камерой телефона или VPN-клиентом (v2rayNG, Nekoray, Streisand)</p>
+                    <div class="flex gap-2">
+                        <button onclick="copyToClipboard('${uri}', this)" class="flex-1 btn btn-primary justify-center">📋 Копировать URI</button>
+                        <button onclick="this.closest('.modal-backdrop').remove()" class="flex-1 btn btn-ghost justify-center">Закрыть</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            const onKey = (e) => { if (e.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', onKey); } };
+            document.addEventListener('keydown', onKey);
+        }
+
+        // === ЗАПУСК ===
+        initTheme();
+        setupTables();
+        setupQrPreview();
+        connectLiveResults();
+        setInterval(refreshTables, 60000);
+    </script>
+</body>
+</html>

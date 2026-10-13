@@ -1,0 +1,18 @@
+.singbox_config.json
+.vpn_pool.json
+.vpn_pool.tmp
+.vpn_schedule.json
+.vpn_schedule.tmp
+
+# Docker: локальные значения окружения не коммитятся
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Сборка
+dist/
+build/

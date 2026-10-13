@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%233b82f6'/%3E%3Cpath d='M20 50 Q50 20 80 50 Q50 80 20 50' fill='none' stroke='white' stroke-width='4'/%3E%3Cpath d='M50 20 L50 80' stroke='white' stroke-width='4'/%3E%3Crect x='42' y='42' width='16' height='20' rx='3' fill='white'/%3E%3Cpath d='M45 42 L45 35 Q50 30 55 35 L55 42' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
+    <title>VPN Admin — панель управления</title>
+	<script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root { color-scheme: dark; }
+        html { scroll-behavior: smooth; }
+        body { background: radial-gradient(1100px 480px at 85% -10%, rgba(59,130,246,.12), transparent), #0b1120; }
+        .glass { background: rgba(17,24,39,.85); backdrop-filter: blur(10px); }
+        .card { background: linear-gradient(180deg, rgba(17,24,39,.92), rgba(17,24,39,.78)); border: 1px solid #1f2937; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+        .config-row { transition: background .15s ease; }
+        .config-row:hover { background-color: rgba(59, 130, 246, 0.1); }
+        .ping-good { color: #10b981; font-weight: 600; }
+        .ping-medium { color: #f59e0b; font-weight: 600; }
+        .ping-bad { color: #ef4444; font-weight: 600; }
+        .copy-btn { transition: transform .12s ease; }
+        .copy-btn:active { transform: scale(.94); }
+        @media (hover: hover) { .copy-btn { opacity: .6; } .config-row:hover .copy-btn { opacity: 1; } }
+        .table-container { max-height: 500px; overflow: auto; scrollbar-width: thin; }
+        .config-table { table-layout: fixed; width: 100%; }
+        .country-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
+        .host-cell { overflow-wrap: anywhere; word-break: break-all; min-width: 0; }
+        select, textarea, input { color-scheme: dark; }
+        select { max-width: 220px; overflow: hidden; text-overflow: ellipsis; background: #0f172a; border: 1px solid #374151; border-radius: 10px; }
+        select:focus, textarea:focus, button:focus-visible { outline: 2px solid rgba(59,130,246,.55); outline-offset: 1px; }
+        .btn { display: inline-flex; align-items: center; gap: .45rem; border-radius: 10px; padding: .55rem 1rem; font-size: 13px; font-weight: 700; cursor: pointer; border: 1px solid transparent; transition: filter .15s, transform .1s; }
+        .btn:active { transform: scale(.97); }
+        .btn:disabled { opacity: .5; cursor: not-allowed; }
+        .btn-primary { background: #2563eb; color: #fff; } .btn-primary:hover { background: #1d4ed8; }
+        .btn-success { background: #059669; color: #fff; } .btn-success:hover { background: #047857; }
+        .btn-ghost { background: #1f2937; color: #e5e7eb; border-color: #374151; } .btn-ghost:hover { background: #273449; }
+        .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: .15rem .6rem; font-size: 11px; font-weight: 700; background: #1f2937; border: 1px solid #374151; }
+        #toasts { position: fixed; bottom: 18px; right: 18px; z-index: 100; display: flex; flex-direction: column; gap: 8px; max-width: min(360px, 90vw); }
+        .toast { background: #111827; border: 1px solid #374151; border-left: 4px solid #3b82f6; border-radius: 12px; padding: 10px 12px; font-size: 13px; box-shadow: 0 12px 30px rgba(0,0,0,.4); }
+        .toast.success { border-left-color: #10b981; } .toast.error { border-left-color: #ef4444; }
+        .pulse { animation: pulse-green 2s infinite; }
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        .progress-track { background: #1f2937; border-radius: 999px; height: 8px; overflow: hidden; }
+        .progress-fill { height: 8px; border-radius: 999px; transition: width .3s ease; }
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 18px; width: 18px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -7px; border: 2px solid #93c5fd; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #374151; border-radius: 2px; }
+        input[type=range]::-moz-range-thumb { height: 18px; width: 18px; border-radius: 50%; background: #3b82f6; cursor: pointer; border: 2px solid #93c5fd; }
+        .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 90; padding: 16px; }
+        .modal-box { background: #111827; }
+        .ping-good.ping-badge { background: rgba(16,185,129,.14); }
+        .ping-medium.ping-badge { background: rgba(245,158,11,.16); }
+        .ping-bad.ping-badge { background: rgba(239,68,68,.14); }
+        .ping-badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; white-space: nowrap; }
+        .hbar { height: 6px; background: #1f2937; border-radius: 999px; overflow: hidden; margin-top: 3px; }
+        .hbar > i { display: block; height: 100%; border-radius: 999px; }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+        .stat-tile { background: #0f172a; border: 1px solid #1f2937; border-radius: 12px; padding: 10px 12px; }
+        html[data-theme="light"] body { background: #f1f5f9; color: #0f172a; }
+        html[data-theme="light"] .glass { background: rgba(255,255,255,.9); }
+        html[data-theme="light"] header.glass { border-color: #e2e8f0; }
+        html[data-theme="light"] .card { background: #fff; border-color: #e2e8f0; box-shadow: 0 10px 24px rgba(15,23,42,.08); }
+        html[data-theme="light"] .card .border-gray-800 { border-color: #e2e8f0 !important; }
+        html[data-theme="light"] select, html[data-theme="light"] textarea { background: #fff !important; border-color: #cbd5e1 !important; color: #0f172a !important; }
+        html[data-theme="light"] .text-gray-100, html[data-theme="light"] .text-gray-200 { color: #0f172a !important; }
+        html[data-theme="light"] .text-gray-300 { color: #334155 !important; }
+        html[data-theme="light"] .text-gray-400 { color: #64748b !important; }
+        html[data-theme="light"] .text-green-400 { color: #047857 !important; }
+        html[data-theme="light"] .text-blue-400 { color: #1d4ed8 !important; }
+        html[data-theme="light"] .text-yellow-400 { color: #b45309 !important; }
+        html[data-theme="light"] .text-red-400 { color: #b91c1c !important; }
+        html[data-theme="light"] .badge { background: #f1f5f9; border-color: #e2e8f0; color: #0f172a; }
+        html[data-theme="light"] .btn-ghost { background: #f1f5f9; border-color: #cbd5e1; color: #0f172a; }
+        html[data-theme="light"] .toast { background: #fff; border-color: #e2e8f0; color: #0f172a; }
+        html[data-theme="light"] .stat-tile { background: #f8fafc; border-color: #e2e8f0; }
+        html[data-theme="light"] .hbar { background: #e2e8f0; }
+        html[data-theme="light"] .modal-box { background: #fff; }
+        html[data-theme="light"] .modal-box h3 { color: #0f172a; }
+        html[data-theme="light"] .table-container { border-color: #e2e8f0 !important; }
+        @media (max-width: 640px) { .config-table { min-width: 560px; } }
+    </style>
+</head>
+<body class="text-gray-100 font-sans">
+    <div id="toasts" aria-live="polite"></div>
+    <header class="glass border-b border-gray-800 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 md:px-6 py-3 flex flex-wrap items-center gap-3">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-emerald-500 flex items-center justify-center text-xl">🔧</div>
+                <div>
+                    <h1 class="text-lg md:text-xl font-extrabold tracking-tight">VPN Admin</h1>
+                    <p class="text-xs text-gray-400">Проверка конфигураций • интервалы • импорт</p>
+                </div>
+            </div>
+            <div class="ml-auto flex items-center gap-2">
+                <button id="themeToggle" onclick="toggleTheme()" class="btn btn-ghost" title="Переключить светлую/тёмную тему" aria-label="Переключить тему">🌙</button>
+                <a href="/" class="btn btn-ghost">← Публичная страница</a>
+                <button id="dlSingboxBtn" onclick="startDlSingbox()" class="btn btn-success hidden">⬇ Скачать sing-box</button>
+                <div id="singboxStatus" class="text-xs bg-gray-800 px-3 py-2 rounded-xl border border-gray-700">
+                    Загрузка...
+                </div>
+            </div>
+        </div>
+    </header>
+    <div class="max-w-7xl mx-auto px-4 md:px-6 py-5">
+
+        <!-- Панель настроек с ползунком -->
+        <div class="card p-4 md:p-5 mb-6">
+            <div class="flex flex-wrap items-end gap-6">
+                <div class="flex-1 min-w-[250px]">
+                    <label for="autoUpdateInterval" class="block text-xs font-bold text-gray-300 mb-2">
+                        ⏱️ Интервал автообновления: <span id="intervalValue" class="text-blue-400 font-bold">1</span> мин
+                    </label>
+                    <input type="range" id="autoUpdateInterval" min="1" max="30" value="1"
+                           class="w-full" oninput="updateIntervalDisplay(this.value)" aria-label="Интервал автообновления в минутах">
+                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>1 мин</span>
+                        <span>30 мин</span>
+                    </div>
+                </div>
+                <button onclick="toggleAutoUpdate()" id="autoUpdateBtn"
+                        class="btn btn-ghost">
+                    <span id="autoUpdateIcon">▶</span>
+                    <span id="autoUpdateText">Запустить автообновление</span>
+                </button>
+                <div id="autoUpdateTimer" class="hidden text-sm text-green-400 font-mono items-center gap-2">
+                    <span class="w-2 h-2 bg-green-500 rounded-full pulse inline-block"></span>
+                    Автообновление активно
+                </div>
+            </div>
+        </div>
+
+        <!-- ДАШБОРД -->
+        <section class="card p-4 md:p-5 mb-6" id="dash">
+            <div class="flex flex-wrap items-center gap-3 mb-3">
+                <h2 class="text-lg font-bold text-gray-100">📊 Дашборд проверки</h2>
+                <span id="dashUpd" class="text-xs text-gray-500"></span>
+                <div class="ml-auto flex gap-2">
+                    <button onclick="loadDiag()" id="diagBtn" class="btn btn-ghost">🖥 Диагностика хоста</button>
+                    <button onclick="loadDash()" class="btn btn-ghost">↻ Обновить</button>
+                </div>
+            </div>
+            <div id="dashBody" class="text-sm text-gray-400">Загрузка статистики...</div>
+            <div id="dlLog" class="hidden mt-3 text-xs font-mono bg-gray-900 border border-gray-700 rounded-xl p-3 max-h-48 overflow-auto whitespace-pre-wrap"></div>
+            <div id="diagBody" class="mt-3"></div>
+        </section>
+
+        <!-- ЧЁРНЫЕ СПИСКИ -->
+        <section class="card mb-6 overflow-hidden">
+            <div class="flex flex-wrap items-center gap-3 px-4 md:px-5 py-4 border-b border-gray-800">
+                <span class="text-2xl">⚫</span>
+                <h2 class="text-xl font-bold text-gray-100">Black List</h2>
+                <span id="badge-black" class="badge hidden">0</span>
+                <label class="text-xs text-gray-400 ml-2">Источник:
+                <select id="checkSourceBlack" aria-label="Источник для проверки Black List" class="ml-1 px-2 py-1 text-xs">
+                    <option value="">Все источники</option>
+                    <option value="igareck">igareck</option>
+                    <option value="goida">Goida VPN</option>
+                    <option value="manual">Ручной импорт (пул)</option>
+                    <option value="unknown">Старый пул</option>
+                </select>
+                </label>
+                <button onclick="startTest('black')" id="startBtnBlack"
+                        class="btn btn-primary ml-auto">
+                     🚀 Проверить
+                </button>
+            </div>
+
+            <div id="progressAreaBlack" class="hidden px-4 md:px-5 py-4 border-b border-gray-800">
+                <div class="flex justify-between mb-1 text-xs">
+                    <span id="progressTextBlack">0 / 0</span>
+                    <span id="currentHostBlack" class="text-gray-400 truncate max-w-md"></span>
+                </div>
+                <div class="progress-track">
+                    <div id="progressBarBlack" class="progress-fill bg-blue-500" style="width: 0%"></div>
+                </div>
+                <div id="sourceTextBlack" class="text-xs text-gray-400 mt-3 mb-1"></div>
+                <div class="progress-track">
+                    <div id="sourceBarBlack" class="progress-fill bg-green-500" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div id="resultsBlack" class="px-4 md:px-5 py-4"></div>
+        </section>
+
+        <!-- БЕЛЫЕ СПИСКИ -->
+        <section class="card mb-6 overflow-hidden">
+            <div class="flex flex-wrap items-center gap-3 px-4 md:px-5 py-4 border-b border-gray-800">
+                <span class="text-2xl">⚪</span>
+                <h2 class="text-xl font-bold text-gray-100">White List</h2>
+                <span id="badge-white" class="badge hidden">0</span>
+                <button onclick="startTest('white')" id="startBtnWhite"
+                        class="btn btn-primary ml-auto">
+                    🚀 Проверить
+                </button>
+            </div>
+
+            <div id="progressAreaWhite" class="hidden px-4 md:px-5 py-4 border-b border-gray-800">
+                <div class="flex justify-between mb-1 text-xs">
+                    <span id="progressTextWhite">0 / 0</span>
+                    <span id="currentHostWhite" class="text-gray-400 truncate max-w-md"></span>
+                </div>
+                <div class="progress-track">
+                    <div id="progressBarWhite" class="progress-fill bg-blue-500" style="width: 0%"></div>
+                </div>
+                <div id="sourceTextWhite" class="text-xs text-gray-400 mt-3 mb-1"></div>
+                <div class="progress-track">
+                    <div id="sourceBarWhite" class="progress-fill bg-green-500" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div id="resultsWhite" class="px-4 md:px-5 py-4"></div>
+        </section>
+
+        <!-- ВСЕ ИСТОЧНИКИ (пропорциональные пулы) -->
+        <section class="card mb-6 overflow-hidden">
+            <div class="flex flex-wrap items-center gap-3 px-4 md:px-5 py-4 border-b border-gray-800">
+                <span class="text-2xl">🌐</span>
+                <h2 class="text-xl font-bold text-gray-100">Все источники</h2>
+                <label class="text-xs text-gray-400 ml-2">Источник:
+                <select id="checkSourceBoth" aria-label="Источник для общей проверки" class="ml-1 px-2 py-1 text-xs">
+                    <option value="">Все источники</option>
+                    <option value="igareck">igareck</option>
+                    <option value="goida">Goida VPN</option>
+                    <option value="manual">Ручной импорт (пул)</option>
+                    <option value="unknown">Старый пул</option>
+                </select>
+                </label>
+                <button onclick="startTest('both')" id="startBtnBoth"
+                        class="btn btn-primary ml-auto">
+                    🚀 Проверить всё
+                </button>
+            </div>
+
+            <div id="progressAreaBoth" class="hidden px-4 md:px-5 py-4 border-b border-gray-800">
+                <div class="flex justify-between mb-1 text-xs">
+                    <span id="progressTextBoth">0 / 0</span>
+                    <span id="currentHostBoth" class="text-gray-400 truncate max-w-md"></span>
+                </div>
+                <div class="progress-track">
+                    <div id="progressBarBoth" class="progress-fill bg-blue-500" style="width: 0%"></div>
+                </div>
+                <div id="sourceTextBoth" class="text-xs text-gray-400 mt-3 mb-1"></div>
+                <div class="progress-track">
+                    <div id="sourceBarBoth" class="progress-fill bg-green-500" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div id="resultsBoth" class="px-4 md:px-5 py-4"></div>
+        </section>
+
+        <!-- РУЧНОЕ ДОБАВЛЕНИЕ КОНФИГУРАЦИЙ -->
+        <section class="card p-4 md:p-5 mt-6">
+            <h2 class="text-lg font-bold text-gray-100 mb-1">📥 Добавить конфигурации вручную</h2>
+            <p class="text-xs text-gray-400 mb-3">Вставьте конфигурации (по одной на строку). Каждая проходит разовую проверку: нерабочие сразу отбрасываются и забываются, рабочие попадают в пул и живут по общему правилу — пока не станут недоступны.</p>
+            <div class="flex flex-wrap items-center gap-3 mb-3">
+                <label for="importType" class="text-xs text-gray-400">Список:</label>
+                <select id="importType" class="px-2 py-1 text-sm">
+                    <option value="black">⚫ Black List</option>
+                    <option value="white">⚪ White List</option>
+                </select>
+                <button onclick="importConfigs()" id="importBtn"
+                        class="btn btn-success">
+                    Проверить и добавить
+                </button>
+                <span id="importStatus" class="text-xs text-gray-400" aria-live="polite"></span>
+            </div>
+            <textarea id="importText" rows="6" placeholder="vless://...&#10;trojan://...&#10;ss://..."
+                      class="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-xs font-mono text-gray-200" aria-label="Конфигурации для импорта"></textarea>
+            <div id="importResult" class="text-xs mt-2"></div>
+        </section>
+        <div class="mt-6 flex justify-end">
+            <button onclick="window.scrollTo({top:0,behavior:'smooth'})" class="btn btn-ghost">↑ Наверх</button>
+        </div>
+    </div>
+
+    <script>
+        const state = {
+            autoUpdate: { enabled: false, intervalMinutes: 1 },
+            black: { working: [], failed: [], isRunning: false },
+            white: { working: [], failed: [], isRunning: false },
+            both: { working: [], failed: [], isRunning: false }
+        };
+
+        function toast(message, kind = 'info') {
+            const box = document.getElementById('toasts');
+            if (!box) return;
+            const el = document.createElement('div');
+            el.className = `toast ${kind === 'success' ? 'success' : kind === 'error' ? 'error' : ''}`;
+            el.textContent = message;
+            box.appendChild(el);
+            setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 320); }, 2800);
+        }
+
+        function initTheme() {
+            let t = 'dark';
+            try { t = localStorage.getItem('wiv-theme') || 'dark'; } catch (e) {}
+            document.documentElement.dataset.theme = t;
+            const b = document.getElementById('themeToggle');
+            if (b) b.textContent = t === 'light' ? '☀️' : '🌙';
+        }
+
+        function toggleTheme() {
+            const cur = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+            document.documentElement.dataset.theme = cur;
+            try { localStorage.setItem('wiv-theme', cur); } catch (e) {}
+            const b = document.getElementById('themeToggle');
+            if (b) b.textContent = cur === 'light' ? '☀️' : '🌙';
+        }
+
+        function flagEmoji(code) {
+            if (!code || code.length !== 2) return '';
+            code = code.toUpperCase() === 'UK' ? 'GB' : code.toUpperCase();
+            if (!/^[A-Z]{2}$/.test(code)) return '';
+            return String.fromCodePoint(...[...code].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
+        }
+
+        function hbar(pct, color) {
+            const w = Math.max(2, Math.min(100, pct || 0));
+            return `<div class="hbar"><i style="width:${w}%;background:${color}"></i></div>`;
+        }
+
+        async function loadDash() {
+            const body = document.getElementById('dashBody');
+            try {
+                const r = await fetch('/api/admin/status');
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const d = await r.json();
+                const types = ['black', 'white'];
+                const icons = { black: '⚫', white: '⚪' };
+                body.innerHTML = `<div class="stat-grid">` + types.map(t => {
+                    const p = d.public_data[t];
+                    const s = (d.stats && d.stats[t]) || {};
+                    const errs = s.errors || {};
+                    const errTotal = Object.values(errs).reduce((a, b) => a + b, 0) || 1;
+                    const protos = s.working_by_proto || {};
+                    const protoTotal = Object.values(protos).reduce((a, b) => a + b, 0) || 1;
+                    const errRows = Object.entries(errs).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) =>
+                        `<div class="flex justify-between text-xs mt-1"><span class="text-gray-400">${escapeHtml(k)}</span><b>${v}</b></div>${hbar(v / errTotal * 100, '#f59e0b')}`).join('') || '<div class="text-xs text-gray-500 mt-1">Ошибок пока нет</div>';
+                    const protoRows = Object.entries(protos).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
+                        `<div class="flex justify-between text-xs mt-1"><span class="text-gray-400 font-mono">${escapeHtml(k)}</span><b>${v}</b></div>${hbar(v / protoTotal * 100, '#3b82f6')}`).join('') || '<div class="text-xs text-gray-500 mt-1">Нет данных</div>';
+                    return `<div class="stat-tile">
+                        <div class="font-bold mb-1">${icons[t]} ${t === 'black' ? 'Black' : 'White'} List</div>
+                        <div class="text-xs text-gray-400">Рабочих: <b class="text-green-400">${p.working_count}</b> • Нерабочих: <b class="text-red-400">${p.failed_count}</b></div>
+                        <div class="text-xs text-gray-500 mt-1">Проверено: ${s.checked ?? '—'} • Пропущено источников: ${s.skipped_sources ?? '—'} • Обновлено: ${escapeHtml(p.last_update || '—')}</div>
+                        <div class="text-xs font-bold mt-2">Ошибки</div>${errRows}
+                        <div class="text-xs font-bold mt-2">Рабочие по протоколам</div>${protoRows}
+                    </div>`;
+                }).join('') + `</div>
+                <div class="text-xs text-gray-500 mt-3">Таймаут: ${d.check_tuning.timeout} с • Потоков: ${d.check_tuning.concurrency} • Автообновление: ${d.auto_update.enabled ? 'вкл' : 'выкл'} (${d.auto_update.interval_seconds} с)</div>`;
+                document.getElementById('dashUpd').textContent = `обновлено ${new Date().toLocaleTimeString('ru-RU')}`;
+            } catch (e) {
+                body.innerHTML = `<span class="text-red-400">Не удалось загрузить статистику: ${escapeHtml(e.message)}</span>`;
+            }
+        }
+
+        async function loadDiag() {
+            const btn = document.getElementById('diagBtn');
+            const body = document.getElementById('diagBody');
+            btn.disabled = true;
+            body.innerHTML = '<div class="text-xs text-gray-400">Опрашиваем хост...</div>';
+            try {
+                const r = await fetch('/api/diag');
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const d = await r.json();
+                const rows = Object.entries(d).map(([k, v]) => {
+                    const val = typeof v === 'object' ? JSON.stringify(v) : String(v);
+                    const bad = /ERROR/i.test(val);
+                    return `<div class="stat-tile"><div class="text-xs text-gray-500 font-mono break-all">${escapeHtml(k)}</div><div class="text-xs mt-1 break-all ${bad ? 'text-red-400' : ''}">${escapeHtml(val.slice(0, 300))}</div></div>`;
+                }).join('');
+                body.innerHTML = `<div class="text-xs font-bold mb-2">🖥 Диагностика хоста ${escapeHtml(d.host || '')}</div><div class="stat-grid">${rows}</div>`;
+            } catch (e) {
+                body.innerHTML = `<span class="text-red-400 text-xs">Ошибка диагностики: ${escapeHtml(e.message)}</span>`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function startDlSingbox() {
+            const btn = document.getElementById('dlSingboxBtn');
+            const log = document.getElementById('dlLog');
+            btn.disabled = true;
+            log.classList.remove('hidden');
+            log.textContent = '⬇ Скачивание sing-box...\n';
+            document.getElementById('dash').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            try {
+                const r = await fetch('/api/download-singbox', { method: 'POST' });
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const reader = r.body.getReader();
+                const dec = new TextDecoder();
+                let buf = '';
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buf += dec.decode(value, { stream: true });
+                    const parts = buf.split('\n\n');
+                    buf = parts.pop() || '';
+                    for (const line of parts) {
+                        if (!line.startsWith('data: ')) continue;
+                        const ev = JSON.parse(line.slice(6));
+                        if (ev.type === 'log') log.textContent += ev.message + '\n';
+                        if (ev.type === 'done') {
+                            log.textContent += (ev.success ? '✅ ' : '❌ ') + ev.message + '\n';
+                            toast(ev.message, ev.success ? 'success' : 'error');
+                        }
+                    }
+                    log.scrollTop = log.scrollHeight;
+                }
+            } catch (e) {
+                log.textContent += `❌ Ошибка: ${e.message}\n`;
+                toast(`Ошибка скачивания: ${e.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                init();
+                loadDash();
+            }
+        }
+
+        async function init() {
+            initTheme();
+            try {
+                const response = await fetch('/api/lists');
+                const data = await response.json();
+                
+                const statusDiv = document.getElementById('singboxStatus');
+                if (data.singbox_available) {
+                    statusDiv.className = 'text-xs bg-green-900/30 text-green-400 px-3 py-2 rounded-xl border border-green-700';
+                    statusDiv.innerHTML = `✅ sing-box: <b>${escapeHtml(data.singbox_source)}</b><br><span class="text-gray-400 font-mono">${escapeHtml(data.singbox_path)}</span>`;
+                    document.getElementById('dlSingboxBtn').classList.add('hidden');
+                } else {
+                    statusDiv.className = 'text-xs bg-red-900/30 text-red-400 px-3 py-2 rounded-xl border border-red-700';
+                    statusDiv.innerHTML = `❌ sing-box не найден — проверки невозможны`;
+                    document.getElementById('dlSingboxBtn').classList.remove('hidden');
+                    toast('sing-box не найден. Скачайте его кнопкой в шапке.', 'error');
+                }
+                window._pool = data.pool || null;
+
+                // Восстанавливаем настройки автообновления
+                if (data.auto_update) {
+                    const mins = Math.floor(data.auto_update.interval_seconds / 60);
+                    document.getElementById('autoUpdateInterval').value = mins;
+                    document.getElementById('intervalValue').textContent = mins;
+                    state.autoUpdate.intervalMinutes = mins;
+                    if (data.auto_update.enabled) {
+                        startAutoUpdateUI();
+                    }
+                }
+            } catch (e) {
+                console.error('Ошибка инициализации:', e);
+            }
+        }
+
+        function updateIntervalDisplay(value) {
+            document.getElementById('intervalValue').textContent = value;
+            state.autoUpdate.intervalMinutes = parseInt(value);
+            fetch('/api/admin/set-interval', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ minutes: parseInt(value) })
+            });
+        }
+
+        function toggleAutoUpdate() {
+            if (state.autoUpdate.enabled) {
+                stopAutoUpdate();
+            } else {
+                startAutoUpdate();
+            }
+        }
+
+        function startAutoUpdate() {
+            fetch('/api/admin/toggle-auto-update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: true })
+            });
+            startAutoUpdateUI();
+        }
+
+        function startAutoUpdateUI() {
+            state.autoUpdate.enabled = true;
+            const btn = document.getElementById('autoUpdateBtn');
+            btn.classList.add('btn-success', 'pulse');
+            btn.classList.remove('btn-ghost');
+            document.getElementById('autoUpdateIcon').textContent = '⏹';
+            document.getElementById('autoUpdateText').textContent = 'Остановить автообновление';
+            const timer = document.getElementById('autoUpdateTimer');
+            timer.classList.remove('hidden');
+            timer.classList.add('flex');
+        }
+
+        function stopAutoUpdate() {
+            fetch('/api/admin/toggle-auto-update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: false })
+            });
+            state.autoUpdate.enabled = false;
+            const btn = document.getElementById('autoUpdateBtn');
+            btn.classList.remove('btn-success', 'pulse');
+            btn.classList.add('btn-ghost');
+            document.getElementById('autoUpdateIcon').textContent = '▶';
+            document.getElementById('autoUpdateText').textContent = 'Запустить автообновление';
+            const timer = document.getElementById('autoUpdateTimer');
+            timer.classList.add('hidden');
+            timer.classList.remove('flex');
+        }
+
+        function sourceFilterFor(type) {
+            const ids = { black: 'checkSourceBlack', both: 'checkSourceBoth' };
+            const el = ids[type] ? document.getElementById(ids[type]) : null;
+            return (el && el.value) || null;
+        }
+
+        async function startTest(type) {
+            if (state[type].isRunning) return;
+            const names = { black: 'Black', white: 'White', both: 'всех источников' };
+            const name = names[type] || type;
+            const poolN = window._pool ? window._pool[type] : null;
+            const estimate = poolN ? ` В пуле сейчас ${poolN} рабочих; полная проверка источников обычно занимает несколько минут.` : ' Проверка тысяч конфигураций обычно занимает несколько минут.';
+            if (!confirm(`Запустить проверку ${name === 'всех источников' ? name : name + ' List'}?${estimate} Прогресс будет виден ниже, страницу можно не закрывать.`)) return;
+            state[type].isRunning = true;
+
+            const btnIds = { black: 'startBtnBlack', white: 'startBtnWhite', both: 'startBtnBoth' };
+            const btn = document.getElementById(btnIds[type]);
+            const progressArea = document.getElementById(`progressArea${type.charAt(0).toUpperCase() + type.slice(1)}`);
+            
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+            progressArea.classList.remove('hidden');
+            
+            state[type].working = [];
+            state[type].failed = [];
+
+            let reader;
+            try {
+                const response = await fetch('/api/test-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: type, source: sourceFilterFor(type) })
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop() || '';
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = JSON.parse(line.substring(6));
+                            handleEvent(type, data);
+                        }
+                    }
+                }
+            } catch (e) {
+                document.getElementById(`progressText${type.charAt(0).toUpperCase() + type.slice(1)}`).textContent = `Ошибка: ${e.message}`;
+            } finally {
+                state[type].isRunning = false;
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+                if (reader) await reader.cancel().catch(() => {});
+            }
+        }
+
+        function handleEvent(type, data) {
+            const cap = type.charAt(0).toUpperCase() + type.slice(1);
+            switch(data.type) {
+                case 'progress':
+                    const pct = data.total > 0 ? (data.current / data.total * 100) : 0;
+                    document.getElementById(`progressBar${cap}`).style.width = pct + '%';
+                    document.getElementById(`progressText${cap}`).textContent = `Общий: ${pct > 0 && pct < 0.01 ? '<0.01' : pct.toFixed(2)}%; конфигураций ${data.current || 0} / ${data.total}; источников ${data.sources_done || 0} / ${data.sources_total || 0}`;
+                    const source = data.source;
+                    document.getElementById(`currentHost${cap}`).textContent = source?.name || '';
+                    if (source) {
+                        const downloading = source.phase === 'downloading';
+                        const current = downloading ? source.bytes : source.current;
+                        const total = downloading ? source.bytes_total : source.total;
+                        const finished = ['done', 'skipped'].includes(source.phase);
+                        const sourcePct = finished ? 100 : total ? current / total * 100 : 0;
+                        const phases = {downloading: 'Загрузка (байт)', preparing: 'Каталог (файлов)', checking: 'VPN + ChatGPT (конфигов)', done: 'Пул обработан', skipped: 'Пропущен'};
+                        const quotas = source.scope_quotas ? ' Доли: ' + Object.entries(source.scope_quotas).map(([name, count]) => `${name}: ${count}`).join('; ') : '';
+                        document.getElementById(`sourceText${cap}`).textContent = `${phases[source.phase]}: ${current} / ${total || '—'} ${source.message || ''}${quotas}`;
+                        const bar = document.getElementById(`sourceBar${cap}`);
+                        bar.style.width = !total && !finished ? '30%' : sourcePct + '%';
+                        bar.classList.toggle('animate-pulse', !total && !finished);
+                    }
+                    break;
+                case 'found':
+                    const info = extractConfigInfo(data.config, state[type].working.length);
+                    info.latency = data.latency || 0;
+                    state[type].working.push(info);
+                    break;
+                case 'failed':
+                    const fInfo = extractConfigInfo(data.config, state[type].failed.length);
+                    fInfo.error = data.error || 'timeout';
+                    state[type].failed.unshift(fInfo);
+                    break;
+                case 'done':
+                    state[type].working = data.working.map((c, i) => ({ ...extractConfigInfo(c.uri, i), latency: c.latency, source: c.source }));
+                    state[type].failed = data.failed.map((c, i) => ({ ...extractConfigInfo(c.uri, i), error: c.error }));
+                    renderResults(type);
+                    updateBadges();
+                    break;
+                case 'error':
+                    throw new Error(data.message || 'Не удалось завершить проверку');
+            }
+        }
+
+        async function importConfigs() {
+            const btn = document.getElementById('importBtn');
+            const status = document.getElementById('importStatus');
+            const result = document.getElementById('importResult');
+            const type = document.getElementById('importType').value;
+            const text = document.getElementById('importText').value;
+            if (!text.trim()) {
+                status.textContent = 'Вставьте хотя бы одну конфигурацию';
+                return;
+            }
+            btn.disabled = true;
+            status.textContent = '⏳ Проверка...';
+            result.innerHTML = '';
+            try {
+                const response = await fetch('/api/import-configs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type, text })
+                });
+                if (response.status === 409) {
+                    status.textContent = '⏳ Идёт проверка, попробуйте позже';
+                    return;
+                }
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    status.textContent = `❌ Ошибка: ${err.detail || response.status}`;
+                    return;
+                }
+                const data = await response.json();
+                status.textContent = `✅ Добавлено: ${data.added.length}, отброшено: ${data.failed.length} (всего распознано: ${data.total})`;
+                // Показываем разобранный адрес, а не сырой URI: у VMess весь
+                // URI — это Base64-блоб, такие строки в интерфейсе не нужны.
+                const fmtImport = c => {
+                    const info = extractConfigInfo(c.uri, 0);
+                    return `${escapeHtml(info.host)}:${escapeHtml(info.port)} (${escapeHtml(info.country)})`;
+                };
+                result.innerHTML =
+                    (data.added.length ? `<div class="text-green-400">Добавлены в пул (${data.added.length}):<br><span class="font-mono break-all">${data.added.map(c => fmtImport(c)).join('<br>')}</span></div>` : '') +
+                    (data.failed.length ? `<div class="text-red-400 mt-2">Отброшены (${data.failed.length}):<br><span class="font-mono break-all">${data.failed.map(c => `${fmtImport(c)} — ${escapeHtml(c.error)}`).join('<br>')}</span></div>` : '');
+                if (data.added.length) document.getElementById('importText').value = '';
+            } catch (e) {
+                status.textContent = `❌ Ошибка связи: ${e.message}`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function updateBadges() {
+            const bTotal = state.black.working.length + state.black.failed.length;
+            const wTotal = state.white.working.length + state.white.failed.length;
+            const bBadge = document.getElementById('badge-black');
+            bBadge.textContent = bTotal > 0 ? bTotal : '';
+            bBadge.classList.toggle('hidden', bTotal === 0);
+            const wBadge = document.getElementById('badge-white');
+            wBadge.textContent = wTotal > 0 ? wTotal : '';
+            wBadge.classList.toggle('hidden', wTotal === 0);
+        }
+
+        function renderResults(type) {
+            const container = document.getElementById(`results${type.charAt(0).toUpperCase() + type.slice(1)}`);
+            const working = state[type].working;
+            const failed = state[type].failed;
+            container.innerHTML = `
+                <div class="text-sm mb-3 flex flex-wrap items-center gap-2">
+                    <span class="badge">Рабочих: ${working.length}</span>
+                    <span class="badge">Нерабочих: ${failed.length}</span>
+                    <button onclick="copyAll('${type}', 'working')" class="btn btn-ghost ml-auto">📋 Копировать рабочие</button>
+                </div>
+                <div class="table-container overflow-x-auto rounded-xl border border-gray-800"><table class="config-table w-full text-sm"><colgroup><col style="width:40px"><col style="width:140px"><col><col style="width:90px"><col style="width:120px"></colgroup><tbody id="working${type}"></tbody></table></div>
+                <details class="mt-3 rounded-xl border border-gray-800 px-3 py-2"><summary class="cursor-pointer text-sm text-gray-300">Ошибки (${failed.length}) — нажмите, чтобы раскрыть</summary>
+                    <div class="text-xs break-all mt-2 max-h-48 overflow-auto">${failed.length ? failed.map(c => `<div class="py-1 border-b border-gray-800 font-mono">${escapeHtml(c.host)}:${escapeHtml(c.port)} — ${escapeHtml(c.error)}</div>`).join('') : '<div class="text-gray-500">Ошибок нет</div>'}</div>
+                </details>`;
+            const tbody = document.getElementById(`working${type}`);
+
+            if (working.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="px-3 py-8 text-center text-gray-500">Нет данных — запустите проверку</td></tr>';
+                return;
+            }
+
+            const sorted = [...working].sort((a, b) => (a.latency || 0) - (b.latency || 0));
+            
+            tbody.innerHTML = sorted.map((c, i) => {
+                const info = extractConfigInfo(c.uri);
+                const pingClass = c.latency <= 100 ? 'ping-good' : c.latency <= 300 ? 'ping-medium' : 'ping-bad';
+                return `
+                    <tr class="config-row">
+                        <td class="px-3 py-2 text-gray-400">${i + 1}</td>
+                        <td class="px-3 py-2 country-cell" title="${escapeHtml(info.country)}">${info.code ? flagEmoji(info.code) + ' ' : ''}${escapeHtml(info.country)}</td>
+                        <td class="px-3 py-2 font-mono text-xs host-cell">${escapeHtml(info.host)}:${escapeHtml(info.port)}<div class="text-gray-400">${escapeHtml(({igareck: 'igareck', goida: 'Goida VPN', manual: 'Ручной импорт', unknown: 'Старый пул'})[c.source || 'unknown'] || 'Старый пул')}</div></td>
+                        <td class="px-3 py-2"><span class="${pingClass} ping-badge">${c.latency || 0} мс</span></td>
+                        <td class="px-3 py-2 text-right">
+                            <div class="flex gap-2 justify-end">
+                                <button onclick="showQR('${encodeURIComponent(c.uri).replace(/'/g, '%27')}', this)" 
+                                        class="bg-purple-600 hover:bg-purple-700 text-white text-lg px-3 py-1.5 rounded transition" 
+                                        title="QR-код для мобильного">
+                                    📱
+                                </button>
+                                <button onclick="copyToClipboard('${encodeURIComponent(c.uri).replace(/'/g, '%27')}', this)" 
+                                        class="bg-blue-600 hover:bg-blue-700 text-white text-lg px-3 py-1.5 rounded transition" 
+                                        title="Копировать">
+                                    📋
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+        }
+
+        function showQR(uri, btn) {
+            const decodedUri = decodeURIComponent(uri);
+
+            // Создаём модальное окно
+            const modal = document.createElement('div');
+            modal.className = 'modal-backdrop';
+            modal.onclick = (e) => {
+                if (e.target === modal) modal.remove();
+            };
+
+            modal.innerHTML = `
+                <div class="modal-box rounded-2xl p-6 max-w-sm w-full border border-gray-700 shadow-2xl" role="dialog" aria-modal="true" aria-label="QR-код">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-bold text-white">QR-код для мобильного</h3>
+                        <button onclick="this.closest('.modal-backdrop').remove()" class="btn btn-ghost" aria-label="Закрыть">×</button>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl mb-4 flex justify-center">
+                        <img src="/api/qr?uri=${encodeURIComponent(decodedUri)}"
+                            alt="QR Code"
+                            class="max-w-full h-auto"
+                            style="image-rendering: pixelated;" loading="lazy">
+                    </div>
+                    <p class="text-xs text-gray-400 text-center mb-4">
+                        Отсканируйте камерой телефона или приложением VPN-клиента
+                    </p>
+                    <div class="flex gap-2">
+                        <button onclick="copyToClipboard('${uri}', this)"
+                                class="btn btn-primary flex-1 justify-center">
+                            Копировать URI
+                        </button>
+                        <button onclick="this.closest('.modal-backdrop').remove()"
+                                class="btn btn-ghost flex-1 justify-center">
+                            Закрыть
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            const onKey = (e) => { if (e.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', onKey); } };
+            document.addEventListener('keydown', onKey);
+        }
+        
+        const COUNTRY_NAMES = { AD: 'Андорра', AE: 'ОАЭ', AF: 'Афганистан', AG: 'Антигуа и Барбуда', AI: 'Ангилья', AL: 'Албания', AM: 'Армения', AO: 'Ангола', AR: 'Аргентина', AS: 'Американское Самоа', AT: 'Австрия', AU: 'Австралия', AW: 'Аруба', AX: 'Аландские острова', AZ: 'Азербайджан', BA: 'Босния и Герцеговина', BB: 'Барбадос', BD: 'Бангладеш', BE: 'Бельгия', BF: 'Буркина-Фасо', BG: 'Болгария', BH: 'Бахрейн', BI: 'Бурунди', BJ: 'Бенин', BM: 'Бермуды', BN: 'Бруней', BO: 'Боливия', BR: 'Бразилия', BS: 'Багамы', BT: 'Бутан', BW: 'Ботсвана', BY: 'Беларусь', BZ: 'Белиз', CA: 'Канада', CC: 'Кокосовые острова', CD: 'ДР Конго', CF: 'ЦАР', CG: 'Конго', CH: 'Швейцария', CI: 'Кот-д’Ивуар', CK: 'Острова Кука', CL: 'Чили', CM: 'Камерун', CN: 'Китай', CO: 'Колумбия', CR: 'Коста-Рика', CU: 'Куба', CV: 'Кабо-Верде', CW: 'Кюрасао', CY: 'Кипр', CZ: 'Чехия', DE: 'Германия', DJ: 'Джибути', DK: 'Дания', DM: 'Доминика', DO: 'Доминикана', DZ: 'Алжир', EC: 'Эквадор', EE: 'Эстония', EG: 'Египет', ER: 'Эритрея', ES: 'Испания', ET: 'Эфиопия', EU: 'Евросоюз', FI: 'Финляндия', FJ: 'Фиджи', FK: 'Фолклендские острова', FM: 'Микронезия', FO: 'Фарерские острова', FR: 'Франция', GA: 'Габон', GB: 'Великобритания', UK: 'Великобритания', GD: 'Гренада', GE: 'Грузия', GF: 'Французская Гвиана', GH: 'Гана', GI: 'Гибралтар', GL: 'Гренландия', GM: 'Гамбия', GN: 'Гвинея', GP: 'Гваделупа', GQ: 'Экваториальная Гвинея', GR: 'Греция', GT: 'Гватемала', GU: 'Гуам', GW: 'Гвинея-Бисау', GY: 'Гайана', HK: 'Гонконг', HN: 'Гондурас', HR: 'Хорватия', HT: 'Гаити', HU: 'Венгрия', IC: 'Канарские острова', ID: 'Индонезия', IE: 'Ирландия', IL: 'Израиль', IM: 'о. Мэн', IN: 'Индия', IQ: 'Ирак', IR: 'Иран', IS: 'Исландия', IT: 'Италия', JE: 'Джерси', JM: 'Ямайка', JO: 'Иордания', JP: 'Япония', KE: 'Кения', KG: 'Киргизия', KH: 'Камбоджа', KI: 'Кирибати', KM: 'Коморы', KN: 'Сент-Китс и Невис', KP: 'Северная Корея', KR: 'Южная Корея', KW: 'Кувейт', KY: 'Каймановы острова', KZ: 'Казахстан', LA: 'Лаос', LB: 'Ливан', LC: 'Сент-Люсия', LI: 'Лихтенштейн', LK: 'Шри-Ланка', LR: 'Либерия', LS: 'Лесото', LT: 'Литва', LU: 'Люксембург', LV: 'Латвия', LY: 'Ливия', MA: 'Марокко', MC: 'Монако', MD: 'Молдова', ME: 'Черногория', MG: 'Мадагаскар', MH: 'Маршалловы Острова', MK: 'Северная Македония', ML: 'Мали', MM: 'Мьянма', MN: 'Монголия', MO: 'Макао', MP: 'Северные Марианские острова', MQ: 'Мартиника', MR: 'Мавритания', MS: 'Монтсеррат', MT: 'Мальта', MU: 'Маврикий', MV: 'Мальдивы', MW: 'Малави', MX: 'Мексика', MY: 'Малайзия', MZ: 'Мозамбик', NA: 'Намибия', NC: 'Новая Каледония', NE: 'Нигер', NG: 'Нигерия', NI: 'Никарагуа', NL: 'Нидерланды', NO: 'Норвегия', NP: 'Непал', NR: 'Науру', NU: 'Ниуэ', NZ: 'Новая Зеландия', OM: 'Оман', PA: 'Панама', PE: 'Перу', PF: 'Французская Полинезия', PG: 'Папуа — Новая Гвинея', PH: 'Филиппины', PK: 'Пакистан', PL: 'Польша', PM: 'Сен-Пьер и Микелон', PR: 'Пуэрто-Рико', PS: 'Палестина', PT: 'Португалия', PW: 'Палау', PY: 'Парагвай', QA: 'Катар', RE: 'Реюньон', RO: 'Румыния', RS: 'Сербия', RU: 'Россия', RW: 'Руанда', SA: 'Саудовская Аравия', SB: 'Соломоновы Острова', SC: 'Сейшелы', SD: 'Судан', SE: 'Швеция', SG: 'Сингапур', SH: 'о. Святой Елены', SI: 'Словения', SK: 'Словакия', SL: 'Сьерра-Леоне', SM: 'Сан-Марино', SN: 'Сенегал', SO: 'Сомали', SR: 'Суринам', SS: 'Южный Судан', ST: 'Сан-Томе и Принсипи', SV: 'Сальвадор', SY: 'Сирия', SZ: 'Эсватини', TD: 'Чад', TG: 'Того', TH: 'Таиланд', TJ: 'Таджикистан', TL: 'Восточный Тимор', TM: 'Туркменистан', TN: 'Тунис', TO: 'Тонга', TR: 'Турция', TT: 'Тринидад и Тобаго', TV: 'Тувалу', TW: 'Тайвань', TZ: 'Танзания', UA: 'Украина', UG: 'Уганда', US: 'США', UY: 'Уругвай', UZ: 'Узбекистан', VA: 'Ватикан', VC: 'Сент-Винсент и Гренадины', VE: 'Венесуэла', VG: 'Британские Виргинские острова', VI: 'Американские Виргинские острова', VN: 'Вьетнам', VU: 'Вануату', WS: 'Самоа', YE: 'Йемен', YT: 'Майотта', ZA: 'ЮАР', ZM: 'Замбия', ZW: 'Зимбабве' };
+        function flagToCode(str) {
+            const m = str.match(/[\u{1F1E6}-\u{1F1FF}]{2}/u);
+            if (!m) return null;
+            const chars = [...m[0]];
+            return chars.map(c => String.fromCharCode(c.codePointAt(0) - 0x1F1E6 + 65)).join('');
+        }
+        function codeToCountry(code) {
+            if (!code) return null;
+            code = code.toUpperCase();
+            return COUNTRY_NAMES[code] || code;
+        }
+        function extractConfigInfo(uri, index) {
+            try {
+                const hashIndex = uri.indexOf('#');
+                let comment = '', baseUri = uri;
+                if (hashIndex !== -1) {
+                    comment = uri.substring(hashIndex + 1);
+                    baseUri = uri.substring(0, hashIndex);
+                }
+                let url;
+                if (baseUri.startsWith('vmess://')) {
+                    const payload = baseUri.slice(8).replace(/-/g, '+').replace(/_/g, '/');
+                    const bytes = Uint8Array.from(atob(payload.padEnd(Math.ceil(payload.length / 4) * 4, '=')), c => c.charCodeAt(0));
+                    const config = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+                    if (typeof config.add !== 'string' || !config.add) throw new Error('Invalid VMess host');
+                    url = { hostname: config.add, port: String(config.port || 443) };
+                    if (!comment) comment = encodeURIComponent(config.ps || '');
+                } else {
+                    url = new URL(baseUri);
+                }
+                let country = 'Неизвестно';
+                let code = null;
+                if (comment) {
+                    try {
+                        const decoded = decodeURIComponent(comment);
+                        const beforePipe = decoded.split('|')[0].trim();
+                        // Формат нового источника: [OpenRay] 🇨🇦 CA-20988 — код страны после тега
+                        const openRay = beforePipe.match(/\[OpenRay\][\s\S]*?([A-Z]{2})-\d+/i);
+                        if (openRay) {
+                            code = openRay[1].toUpperCase();
+                            country = codeToCountry(code) || url.hostname;
+                        } else {
+                            const flagCode = flagToCode(beforePipe);
+                            if (flagCode && codeToCountry(flagCode) && /\[.*\]/.test(beforePipe)) {
+                                code = flagCode.toUpperCase();
+                                country = codeToCountry(code);
+                            } else {
+                                const parts = decoded.split('|');
+                                country = parts[0].trim().replace(/[\u{1F1E6}-\u{1F1FF}]{2}/gu, '').replace(/\[.*?\]/g, '').split(',')[0].trim().replace(/\s+/g, ' ').trim() || url.hostname;
+                            }
+                        }
+                    } catch (e) { country = url.hostname; }
+                } else { country = url.hostname; }
+                return { index: index + 1, country, code, host: url.hostname, port: url.port || '443', uri, latency: 0, error: null };
+            } catch (e) {
+                return { index: index + 1, country: 'Ошибка', code: null, host: 'N/A', port: 'N/A', uri, latency: 0, error: 'Parse Error' };
+            }
+        }
+
+        function formatPing(ms) {
+            if (ms <= 100) return `<span class="ping-good">${ms} мс</span>`;
+            if (ms <= 300) return `<span class="ping-medium">${ms} мс</span>`;
+            return `<span class="ping-bad">${ms} мс</span>`;
+        }
+
+        async function writeClipboard(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                return;
+            }
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            try {
+                textarea.select();
+                if (!document.execCommand('copy')) throw new Error('Копирование недоступно');
+            } finally {
+                textarea.remove();
+            }
+        }
+
+        function copyToClipboard(text, btn) {
+            writeClipboard(decodeURIComponent(text)).then(() => {
+                toast('URI скопирован', 'success');
+                const original = btn.innerHTML;
+                btn.innerHTML = '✅';
+                setTimeout(() => btn.innerHTML = original, 1500);
+            }).catch(e => toast(`Ошибка копирования: ${e.message}`, 'error'));
+        }
+
+        function copyAll(type, listType) {
+            const list = listType === 'working' ? state[type].working : state[type].failed;
+            if (!list.length) { toast('Список пуст — нечего копировать', 'error'); return; }
+            const text = list.map(c => c.uri).join('\n');
+            writeClipboard(text).then(() => {
+                toast(`Скопировано конфигураций: ${list.length}`, 'success');
+            }).catch(e => toast(`Ошибка копирования: ${e.message}`, 'error'));
+        }
+
+        init();
+        loadDash();
+    </script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+services:
+  vpn-validator:
+    build: .
+    image: where-is-my-vpn:latest
+    container_name: where-is-my-vpn
+    restart: unless-stopped
+    ports:
+      # Хост:контейнер. Меняйте левую часть, если 8079 занят на хосте.
+      - "${VPN_SERVER_PORT:-8079}:8079"
+    env_file:
+      - .env
+    environment:
+      # Внутри контейнера пути фиксированы; VPN_SERVER_PORT дублируется
+      # для EXPOSE/healthcheck, наружный порт задаётся в ports выше.
+      VPN_DATA_DIR: /data
+      VPN_SINGBOX_DIR: /app/sing-box-bin
+      VPN_OPEN_BROWSER: "0"
+      VPN_SERVER_HOST: 0.0.0.0
+    volumes:
+      # Пул, конфиг sing-box и чекпоинты переживают пересоздание контейнера
+      - vpn-data:/data
+    # sing-box порождает дочерние процессы и работает с сетью
+    init: true
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  vpn-data:
