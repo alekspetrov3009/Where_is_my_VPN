@@ -4,34 +4,41 @@
 Все настраиваемые значения вынесены в переменные окружения (см. [config.py](config.py)
 и [.env.example](.env.example)).
 
-## Как устроено развёртывание
+## Быстрый старт (одна команда)
 
-При сборке образа Docker клонирует актуальный код прямо из GitHub-репозитория
-<https://github.com/alekspetrov3009/Where_is_my_VPN>: [docker-compose.yml](docker-compose.yml)
-указывает репозиторий как контекст сборки. Локальная копия исходников не нужна —
-достаточно двух файлов: `docker-compose.yml` и `.env`.
+Самый простой путь — скрипт [deploy.sh](deploy.sh): он сам создаст `.env`,
+скачает sing-box, соберёт образ, запустит контейнер и дождётся статуса healthy.
 
-- `docker compose up -d --build` — каждая сборка подтягивает свежую `main`-ветку.
-- Закрепить конкретную версию — фрагмент URL в compose:
-  `build: https://github.com/alekspetrov3009/Where_is_my_VPN.git#v1.0.0`
-  (после `#` — тег, ветка или хэш коммита).
-- Для локальной разработки замените в compose строку `build:` на `build: .` —
-  соберётся из локальных файлов.
+```bash
+bash deploy.sh              # собрать и запустить (код из GitHub)
+bash deploy.sh --local      # то же, но из локальной папки
+bash deploy.sh --logs       # смотреть логи
+bash deploy.sh --down       # остановить (данные сохранятся)
+bash deploy.sh --pull-singbox   # перекачать sing-box linux-amd64
+```
 
-## Состав Docker-файлов
+Скрипт идемпотентен: повторный запуск обновляет код и пересобирает образ,
+не трогая `.env` и volume с данными. Ниже описано, что происходит «под капотом»
+и как сделать то же самое вручную.
 
-| Файл | Назначение |
-|------|-----------|
-| [Dockerfile](Dockerfile) | Образ на `python:3.13-slim`; sing-box linux-amd64 ставится на этапе сборки |
-| [docker-compose.yml](docker-compose.yml) | Сервис с volume `/data`, healthcheck, `env_file: .env`; контекст сборки — GitHub-репозиторий |
-| [.dockerignore](.dockerignore) | Исключает данные, тесты и Windows-бинарник из контекста сборки |
-| [.env.example](.env.example) | Шаблон переменных окружения с комментариями |
-| [requirements.txt](requirements.txt) | Зависимости с зафиксированными версиями |
+## Два режима сборки — выберите один
 
-## Быстрый старт без локальной копии проекта
+Ключевой момент, из-за которого чаще всего возникает путаница: **откуда Docker
+берёт код**. Режим задаётся переменной `VPN_BUILD_CONTEXT` в `.env`, править
+[docker-compose.yml](docker-compose.yml) не нужно.
 
-Требуется Docker Engine 20.10+ / Docker Desktop. Скачиваются только файлы
-развёртывания — код приложения при сборке придёт из GitHub.
+| Режим | `VPN_BUILD_CONTEXT` | Что нужно на машине | Когда выбирать |
+|-------|--------------------|---------------------|----------------|
+| Из GitHub (по умолчанию) | не задано | только `docker-compose.yml` + `.env` | обычный сервер, нужна свежая `main` |
+| Локальная сборка | `.` | **весь код** рядом с compose | свой sing-box, неопубликованные правки |
+
+**Важно:** если вы собираете из GitHub, локальная папка `sing-box-bin/` не
+используется — Docker клонирует репозиторий заново. Чтобы подложить свой
+бинарник, обязательно переключитесь на локальную сборку.
+
+## Режим 1: сборка из GitHub
+
+Локальная копия исходников не нужна — достаточно двух файлов.
 
 Linux / Proxmox LXC / VM:
 
@@ -54,6 +61,14 @@ ren .env.example .env
 docker compose up -d --build
 ```
 
+Закрепить версию вместо `main` — задайте в `.env`:
+
+```bash
+VPN_BUILD_CONTEXT=https://github.com/alekspetrov3009/Where_is_my_VPN.git#v1.0.0
+```
+
+(после `#` — тег, ветка или хэш коммита).
+
 Проверка:
 
 ```bash
@@ -61,25 +76,105 @@ docker compose ps
 docker compose logs -f
 ```
 
-После старта:
+## Режим 2: локальная сборка
+
+Нужен весь код проекта в одной папке с `docker-compose.yml`.
+
+**Способ А — через git (аккуратно с вложенностью):**
+
+```bash
+cd ~
+git clone https://github.com/alekspetrov3009/Where_is_my_VPN.git where-is-my-vpn
+cd where-is-my-vpn
+cp .env.example .env
+nano .env
+```
+
+`git clone <url> <папка>` создаёт папку сам. Не делайте `mkdir where-is-my-vpn`
+перед клонированием — иначе получите `where-is-my-vpn/Where_is_my_VPN/`
+с двумя `docker-compose.yml`, и будет неочевидно, какой из них рабочий.
+
+**Способ Б — из ZIP-архива:**
+
+```bash
+mkdir -p ~/where-is-my-vpn && cd ~/where-is-my-vpn
+curl -fL -o /tmp/vpn.zip https://github.com/alekspetrov3009/Where_is_my_VPN/archive/refs/heads/main.zip
+unzip -oq /tmp/vpn.zip -d /tmp
+cp -r /tmp/Where_is_my_VPN-main/. .      # точка в конце обязательна
+```
+
+**Затем включите локальный режим:**
+
+```bash
+echo 'VPN_BUILD_CONTEXT=.' >> .env
+grep -n "VPN_BUILD_CONTEXT" .env
+docker compose up -d --build
+```
+
+**Проверка, что вы в правильной папке** — рядом должны лежать `Dockerfile`
+и `app.py`:
+
+```bash
+ls Dockerfile app.py docker-compose.yml
+```
+
+## Как подложить свой sing-box
+
+Нужно, когда сборка не может скачать бинарник (GitHub и зеркала недоступны),
+но файл можно достать другим способом. **Требуется локальная сборка**
+(`VPN_BUILD_CONTEXT=.`), иначе файл будет проигнорирован.
+
+```bash
+cd ~/where-is-my-vpn
+
+# 1. Скачать linux-amd64 (НЕ .exe — windows-версия в контейнере не работает)
+curl -fL -o /tmp/sb.tar.gz \
+  https://github.com/SagerNet/sing-box/releases/download/v1.10.3/sing-box-1.10.3-linux-amd64.tar.gz
+
+# 2. Распаковать
+tar -xzf /tmp/sb.tar.gz -C /tmp
+
+# 3. Положить под именем ровно sing-box (без расширения)
+mkdir -p sing-box-bin
+cp /tmp/sing-box-1.10.3-linux-amd64/sing-box sing-box-bin/sing-box
+chmod +x sing-box-bin/sing-box
+
+# 4. Убедиться, что это linux-бинарник и он запускается
+file sing-box-bin/sing-box      # ожидаем: ELF 64-bit LSB executable, x86-64
+./sing-box-bin/sing-box version # ожидаем: sing-box version 1.10.3
+```
+
+То же одной командой: `bash deploy.sh --local --pull-singbox`.
+
+Признак успеха при сборке — в логах **нет** строки
+«В sing-box-bin нет linux-бинарника — скачиваю linux-amd64».
+
+Проверить бинарник внутри контейнера:
+
+```bash
+docker compose exec vpn-validator ./sing-box-bin/sing-box version
+```
+
+Если положили не тот файл (например, `sing-box.exe` от Windows), сборка упадёт
+на шаге `./sing-box-bin/sing-box version` — это защита от неверного бинарника.
+
+## Состав Docker-файлов
+
+| Файл | Назначение |
+|------|-----------|
+| [Dockerfile](Dockerfile) | Образ на `python:3.13-slim`; sing-box linux-amd64 ставится на этапе сборки |
+| [docker-compose.yml](docker-compose.yml) | Сервис с volume `/data`, healthcheck, `env_file: .env`; контекст сборки — `VPN_BUILD_CONTEXT` |
+| [deploy.sh](deploy.sh) | Развёртывание одной командой: `.env`, sing-box, сборка, запуск, проверка |
+| [docker/fetch_singbox.py](docker/fetch_singbox.py) | Загрузчик sing-box с таймаутами и зеркалами (используется в Dockerfile) |
+| [.dockerignore](.dockerignore) | Исключает данные, тесты и Windows-бинарник из контекста сборки |
+| [.env.example](.env.example) | Шаблон переменных окружения с комментариями |
+| [requirements.txt](requirements.txt) | Зависимости с зафиксированными версиями |
+
+## После старта
 
 - Публичная страница: <http://localhost:8079>
 - Админ-панель: <http://localhost:8079/vpn-control-panel-x7k9>
   (логин/пароль — `VPN_ADMIN_USER` / `VPN_ADMIN_PASSWORD` из `.env`, по умолчанию `admin` / `vpn2026`)
-
-## Быстрый старт из локальной копии проекта
-
-Если репозиторий уже склонирован:
-
-```bat
-cd 2_Where_is_my_VPN
-copy .env.example .env
-docker compose up -d --build
-```
-
-Сборка всё равно пойдёт из GitHub (так настроен контекст в
-[docker-compose.yml](docker-compose.yml)). Чтобы собрать из локальных файлов —
-замените строку `build:` на `build: .`.
 
 ## Переменные окружения
 
@@ -87,6 +182,7 @@ docker compose up -d --build
 
 | Переменная | По умолчанию | Описание |
 |-----------|--------------|----------|
+| `VPN_BUILD_CONTEXT` | URL репозитория | Откуда брать код при сборке: URL, `.` (локально) или `URL#тег` |
 | `VPN_SERVER_PORT` | `8079` | Порт веб-сервера (левая часть `ports` в compose) |
 | `VPN_SERVER_HOST` | `0.0.0.0` | Адрес привязки (в контейнере не менять) |
 | `VPN_ADMIN_PATH` | `/vpn-control-panel-x7k9` | Путь админ-панели |
@@ -123,16 +219,25 @@ docker compose down -v
 ## Обновление до актуальной версии
 
 ```bash
+bash deploy.sh              # в режиме GitHub подтянет свежую main-ветку
+```
+
+Или вручную:
+
+```bash
 docker compose up -d --build
 ```
 
-При каждой сборке Docker заново клонирует `main`-ветку репозитория, поэтому
-пересборка всегда подтягивает свежий код. Пул в volume сохраняется между
-пересозданиями контейнера. Заодно обновить базовый образ (`python:3.13-slim`):
+Пул в volume сохраняется между пересозданиями контейнера. Заодно обновить
+базовый образ (`python:3.13-slim`):
 
 ```bash
 docker compose build --pull
 ```
+
+В режиме локальной сборки (`.`) пересборка использует ваши локальные файлы —
+чтобы получить свежий код, сначала обновите его (`git pull` или повторная
+распаковка архива).
 
 ## Логи и диагностика
 
@@ -154,14 +259,15 @@ docker inspect --format "{{.State.Health.Status}}" where-is-my-vpn
 
 ## Особенности работы в контейнере
 
-1. **Код берётся из GitHub** — контекст сборки в
-   [docker-compose.yml](docker-compose.yml) указывает на
-   <https://github.com/alekspetrov3009/Where_is_my_VPN>; пересборка = свежая версия.
+1. **Код берётся из GitHub или из локальной папки** — задаётся переменной
+   `VPN_BUILD_CONTEXT` в `.env` (см. «Два режима сборки»). По умолчанию —
+   репозиторий <https://github.com/alekspetrov3009/Where_is_my_VPN>.
 2. **sing-box linux-amd64**. В репозитории лежит `sing-box.exe` (Windows).
    [Dockerfile](Dockerfile) на этапе сборки скачивает linux-версию 1.10.3
    (с зеркалами, как в [singbox_manager.py](singbox_manager.py)) и проверяет
    её запуском `sing-box version`. Если положите `sing-box-bin/sing-box`
-   (linux-бинарник) в репозиторий — скачивание не потребуется.
+   (linux-бинарник) — скачивание не потребуется (нужна локальная сборка,
+   см. «Как подложить свой sing-box»).
    Загрузкой занимается [docker/fetch_singbox.py](docker/fetch_singbox.py):
    у каждой попытки есть таймаут, поэтому недоступный GitHub не подвешивает
    сборку навсегда, а перебор зеркал идёт дальше. Настройки — build-args
@@ -189,14 +295,12 @@ docker compose build --build-arg HTTPS_PROXY=http://proxy:3128 --build-arg HTTP_
 # 2. Увеличить таймаут и число попыток на источник
 docker compose build --build-arg VPN_DL_TIMEOUT=180 --build-arg VPN_DL_RETRIES=3
 
-# 3. Самый надёжный путь: положить linux-бинарник рядом с исходниками,
-#    тогда скачивание не выполняется вообще
-curl -L -o sing-box-bin/sing-box \
-  https://github.com/SagerNet/sing-box/releases/download/v1.10.3/sing-box-1.10.3-linux-amd64.tar.gz
-tar -xzf sing-box-bin/sing-box -C /tmp   # внутри sing-box-1.10.3-linux-amd64/sing-box
-mv /tmp/sing-box-1.10.3-linux-amd64/sing-box sing-box-bin/sing-box
-chmod +x sing-box-bin/sing-box
+# 3. Самый надёжный путь: положить linux-бинарник заранее — тогда скачивание
+#    не выполняется вообще (нужна локальная сборка, VPN_BUILD_CONTEXT=.)
+bash deploy.sh --local --pull-singbox
 ```
+
+Подробнее про вариант 3 — в разделе «Как подложить свой sing-box».
 
 Если сборка «висит» на шаге `Попытка: https://github.com/...` без вывода —
 это старая версия [Dockerfile](Dockerfile): там использовался `urlretrieve`
@@ -205,7 +309,12 @@ chmod +x sing-box-bin/sing-box
 ## Запуск без docker compose
 
 ```bash
+# из GitHub
 docker build -t where-is-my-vpn https://github.com/alekspetrov3009/Where_is_my_VPN.git
+
+# из локальной папки (нужен весь код рядом) — точка в конце
+docker build -t where-is-my-vpn .
+
 docker run -d --name where-is-my-vpn \
   -p 8079:8079 \
   -e VPN_ADMIN_PASSWORD=мой-пароль \
@@ -215,7 +324,7 @@ docker run -d --name where-is-my-vpn \
 
 `docker build` умеет принимать git-URL как контекст: код клонируется из
 репозитория, локальные файлы не нужны. Для сборки из локальной копии
-замените URL на `.`
+используйте `.` — тогда работает и свой `sing-box-bin/sing-box`.
 
 ## Локальный запуск без Docker (как раньше)
 

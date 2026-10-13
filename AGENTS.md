@@ -31,6 +31,14 @@
 - `print()` to stdout is the intentional logging mechanism (portable exe shows console); no `logging` module by design.
 - No type hints — project style; docstrings on all public functions instead.
 
+## Docker
+
+- `Dockerfile` (python:3.13-slim), `docker-compose.yml`, `deploy.sh`, `DOCKER.md`, `docker/fetch_singbox.py`. Full guide is `DOCKER.md`.
+- Build context is switchable via `VPN_BUILD_CONTEXT` in `.env`: unset = GitHub repo URL, `.` = local folder. Local mode is required to use a hand-placed `sing-box-bin/sing-box`; GitHub mode clones the repo and ignores local files.
+- The Dockerfile downloads sing-box linux-amd64 through `docker/fetch_singbox.py`, which replaced a bare `urlretrieve` — that call had no timeout and hung the build forever on an unreachable GitHub, never reaching the mirrors. Keep per-attempt timeouts (`VPN_DL_TIMEOUT`/`VPN_DL_RETRIES` build-args) when editing.
+- `deploy.sh` is the single entry point (idempotent): creates `.env`, fetches sing-box, builds, starts, waits for healthcheck. Never touches `.env` or the `vpn-data` volume.
+- `.dockerignore` excludes only `sing-box-bin/sing-box.exe` (Windows), so a linux `sing-box-bin/sing-box` does reach the image.
+
 ## Run
 
 - `python app.py` or `python app.py <port>` (default `8079`). Public page `/`, admin `/vpn-control-panel-x7k9` (`admin/vpn2026`, env-overridable via `VPN_ADMIN_USER`/`VPN_ADMIN_PASSWORD`).

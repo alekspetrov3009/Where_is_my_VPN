@@ -1,0 +1,23 @@
+# Нормализация переводов строк.
+#
+# Без этого файла git с core.autocrlf=true (типичная настройка на Windows)
+# превращает LF в CRLF при checkout, и shell-скрипты падают на Linux с
+# "bad interpreter: /bin/bash^M". Здесь жёстко фиксируем LF для .sh —
+# он должен быть исполняемым в контейнере и на сервере.
+
+* text=auto
+
+# Shell-скрипты всегда с LF, иначе не запускаются на Linux
+*.sh text eol=lf
+deploy.sh text eol=lf
+
+# Docker-файлы тоже читаются в Linux-сборке
+Dockerfile text eol=lf
+*.dockerignore text eol=lf
+
+# Бинарники не трогаем
+*.exe binary
+*.ico binary
+*.png binary
+*.jpg binary
+sing-box-bin/sing-box binary
