@@ -1,0 +1,19 @@
+INFO:     Started server process [5168]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8079 (Press CTRL+C to quit)
+============================================================
+ VPN Config Validator запускается...
+✅ sing-box найден (папка приложения): c:\Users\petrov.ai\Downloads\2_Where_is_my_VPN\sing-box-bin\sing-box.exe
+🌐 Публичная страница: http://localhost:8079
+ Админ-панель: http://localhost:8079/vpn-control-panel-x7k9
+   Логин: admin / Пароль: vpn2026
+============================================================
+🌐 Подготовка к запуску. Веб-интерфейс будет доступен по адресу: http://localhost:8079
+🚀 Запуск сервера...
+🚀 Сервер запускается; каталог источников будет загружен перед проверкой.
+💾 Загружен сохранённый пул: black=0, white=0
+🔄 Фоновая задача автообновления ЗАПУЩЕНА!
+INFO:     127.0.0.1:53688 - "GET /api/onekey HTTP/1.1" 503 Service Unavailable
+INFO:     127.0.0.1:53694 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53694 - "GET /api/public/events HTTP/1.1" 200 OK

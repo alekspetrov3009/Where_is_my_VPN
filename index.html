@@ -212,6 +212,7 @@
                         <option value="checks">По проверкам ↓</option>
                     </select>
                     <button onclick="copyAll('stable')" class="btn btn-success">📋 Копировать</button>
+                    <button onclick="showOneKey()" class="btn btn-primary" title="Один ключ: sing-box конфиг с автопереключением серверов (urltest)">🔑 Один ключ</button>
                 </div>
             </div>
             <p class="text-xs text-gray-400 px-4 pt-3">⭐ Стабильно — более 10 успешных проверок подряд (начиная с 11-й). Недоступные конфигурации удаляются при перепроверке.</p>
@@ -1007,6 +1008,40 @@
             if (source && type === 'black2') source.value = 'all';
             applyFilter(type);
             toast('Фильтры сброшены', 'success');
+        }
+
+        function oneKeyUrl() {
+            // Ссылка-ключ: абсолютный URL /api/onekey (клиент забирает свежий
+            // список серверов при каждом обновлении профиля).
+            return new URL('/api/onekey', location.origin).href;
+        }
+
+        function showOneKey() {
+            const url = oneKeyUrl();
+            const modal = document.createElement('div');
+            modal.className = 'modal-backdrop';
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+            modal.innerHTML = `
+                <div class="modal-box rounded-2xl p-6 max-w-sm w-full border border-gray-700 shadow-2xl" role="dialog" aria-modal="true" aria-label="Один ключ">
+                    <div class="flex justify-between items-center mb-1">
+                        <h3 class="text-lg font-bold text-white">🔑 Один ключ (автопереключение)</h3>
+                        <button onclick="this.closest('.modal-backdrop').remove()" class="btn btn-ghost icon-btn" aria-label="Закрыть">×</button>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-4">Конфиг sing-box с urltest: клиент сам выбирает сервер с минимальным пингом и переключается при деградации. Список серверов обновляется при каждом рефетче профиля.</p>
+                    <div class="bg-white p-4 rounded-xl mb-4 flex justify-center">
+                        <img src="/api/qr?uri=${encodeURIComponent(url)}" alt="QR-код ссылки-ключа" class="max-w-full h-auto" style="image-rendering: pixelated;" loading="lazy">
+                    </div>
+                    <p class="text-xs text-gray-400 text-center mb-4 break-all font-mono">${escapeHtml(url)}</p>
+                    <p class="text-xs text-gray-400 text-center mb-4">Импортируйте URL как подписку в sing-box / Hiddify / SFA или отсканируйте камерой.</p>
+                    <div class="flex gap-2">
+                        <button onclick="copyToClipboard('${encodeURIComponent(url)}', this)" class="flex-1 btn btn-primary justify-center">📋 Копировать ссылку</button>
+                        <button onclick="this.closest('.modal-backdrop').remove()" class="flex-1 btn btn-ghost justify-center">Закрыть</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            const onKey = (e) => { if (e.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', onKey); } };
+            document.addEventListener('keydown', onKey);
         }
 
         function showQR(uri) {

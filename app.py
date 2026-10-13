@@ -22,9 +22,10 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 # ============ МОДУЛИ ПРИЛОЖЕНИЯ ============
 from config import (SERVER_PORT, SERVER_HOST, ADMIN_PATH, ADMIN_USERNAME,
-                    ADMIN_PASSWORD, OPEN_BROWSER)
+                    ADMIN_PASSWORD, OPEN_BROWSER, ONEKEY_LIMIT, ONEKEY_MIXED_PORT,
+                    ONEKEY_TOKEN)
 from paths import get_resource_path
-from config_parser import URI_PREFIXES
+from config_parser import URI_PREFIXES, parse_uri_to_singbox_outbound
 from storage import (STABLE_CHECKS, load_config, save_config, get_saved_singbox_path,
                      save_singbox_path, schedule_scope, load_check_schedule,
                      save_check_schedule, load_pool, save_pool as _save_pool_state)
@@ -207,15 +208,20 @@ def open_file_dialog():
 CHECK_LOCK = asyncio.Lock()
 
 
-def get_service_working():
-    """Объединение текущих рабочих пулов без повторения URI с доступом к ChatGPT."""
+def get_service_working(require_all_services=True):
+    """Объединение текущих рабочих пулов без повторения URI.
+
+    require_all_services=True — только серверы с доступом ко всем
+    SERVICE_TARGETS (секция ChatGPT); False — все рабочие (один ключ).
+    """
     combined = {}
     for list_type in ("black", "white"):
         for config in public_data[list_type]["working"]:
-            services = config.get("services", {})
-            results = services.get("results", {})
-            if not all(results.get(name, {}).get("ok") is True for name in SERVICE_TARGETS):
-                continue
+            if require_all_services:
+                services = config.get("services", {})
+                results = services.get("results", {})
+                if not all(results.get(name, {}).get("ok") is True for name in SERVICE_TARGETS):
+                    continue
             uri = config["uri"]
             if uri not in combined:
                 combined[uri] = {**config, "lists": []}
@@ -230,6 +236,90 @@ def pool_priority(item):
     results = item.get("services", {}).get("results", {})
     return (not results.get("gpt", {}).get("ok", False), not item.get("stable", False),
             item.get("last_checked_at", 0))
+
+
+def build_onekey_config(limit=None):
+    """Собирает sing-box конфиг «один ключ» из лучших рабочих серверов.
+
+    Отбор: стабильные серверы из объединённого пула (get_service_working),
+    дедупликация по конечной точке (canonical_endpoint), сортировка по пингу
+    и свежему замеру скорости, top-N. Клиентская часть — urltest: sing-box
+    сам выбирает сервер с минимальной задержкой и переключается при деградации.
+    Возвращает (config_dict, error_message); ровно один из элементов не None.
+    """
+    if limit is None:
+        limit = ONEKEY_LIMIT
+    candidates = [c for c in get_service_working(require_all_services=False) if c.get("stable")]
+    if not candidates:
+        return None, "Нет стабильных серверов — ключ появится после проверки пула"
+
+    # Дедуп по конечной точке: один сервер с разными remark — одна запись.
+    unique = {}
+    for config in candidates:
+        key = canonical_endpoint(config["uri"])
+        if key not in unique:
+            unique[key] = config
+    candidates = list(unique.values())
+
+    def sort_key(config):
+        # Свежий замер скорости (правило 3 часов — как currentSpeed на фронте).
+        speed = (config.get("speed") or {})
+        fresh_speed = speed.get("mbps") if (
+            isinstance(speed.get("mbps"), (int, float))
+            and speed.get("mbps") == speed.get("mbps")  # не NaN
+            and time.time() - speed.get("checked_at", 0) <= SPEED_RECHECK_SECONDS
+        ) else None
+        return (config.get("latency") or 9999,
+                -(fresh_speed or 0),
+                -config.get("successful_checks", 0))
+
+    candidates.sort(key=sort_key)
+
+    outbounds = []
+    seen_tags = set()
+    for index, config in enumerate(candidates):
+        if len(outbounds) >= limit:
+            break
+        outbound = parse_uri_to_singbox_outbound(config["uri"], f"srv-{index + 1}")
+        if not outbound:
+            continue
+        if outbound["tag"] in seen_tags:
+            continue
+        seen_tags.add(outbound["tag"])
+        outbounds.append(outbound)
+
+    if not outbounds:
+        return None, "Ни один стабильный URI не удалось преобразовать в конфиг sing-box"
+
+    config = {
+        "log": {"level": "warn", "timestamp": True},
+        "dns": {
+            "servers": [
+                {"tag": "remote", "address": "tcp://8.8.8.8", "detour": "auto"},
+                {"tag": "local", "address": "local", "detour": "direct"}
+            ],
+            "rules": [{"outbound": "any", "server": "local"}],
+            "final": "remote"
+        },
+        "inbounds": [{
+            "type": "mixed", "tag": "mixed-in",
+            "listen": "127.0.0.1", "listen_port": ONEKEY_MIXED_PORT
+        }],
+        "outbounds": [{
+            "type": "urltest", "tag": "auto",
+            "outbounds": [o["tag"] for o in outbounds],
+            "url": TEST_URL,
+            "interval": "3m",
+            "tolerance": 50
+        }, {
+            "type": "direct", "tag": "direct"
+        }] + outbounds,
+        "route": {
+            "auto_detect_interface": True,
+            "final": "auto"
+        }
+    }
+    return config, None
 
 
 async def maintain_working_pool(singbox_path, first_sweep):
@@ -1034,6 +1124,28 @@ async def get_public_status():
             "auto_update_enabled": auto_update_settings["enabled"]
         }
     }
+
+@app.get("/api/onekey")
+async def onekey(token: str = ""):
+    """Один ключ с автопереключением: sing-box конфиг (urltest) из лучших серверов.
+
+    Файл импортируется в sing-box / Hiddify / SFA как локальный профиль, а сам
+    URL можно добавить как удалённую подписку — клиент будет забирать свежий
+    список серверов при каждом обновлении профиля. Защита: если задан
+    VPN_ONEKEY_TOKEN, URL обязан содержать ?token=<значение>.
+    """
+    if ONEKEY_TOKEN and token != ONEKEY_TOKEN:
+        raise HTTPException(status_code=403, detail="Неверный токен")
+    config, error = build_onekey_config()
+    if error:
+        raise HTTPException(status_code=503, detail=error)
+    return Response(
+        content=json.dumps(config, ensure_ascii=False, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="onekey-singbox.json"',
+                 "Cache-Control": "no-store"}
+    )
+
 
 @app.get("/api/public/events")
 async def public_events(request: Request):

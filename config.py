@@ -110,6 +110,15 @@ SERVICE_TIMEOUT = _env_int("VPN_SERVICE_TIMEOUT", 10)
 # Успешных проверок подряд до статуса "стабильный"
 STABLE_CHECKS = _env_int("VPN_STABLE_CHECKS", 11)
 
+# ============ ОДИН КЛЮЧ (sing-box urltest) ============
+# Максимум серверов в ключе с автопереключением
+ONEKEY_LIMIT = _env_int("VPN_ONEKEY_LIMIT", 20)
+# Порт mixed-инбаунда в генерируемом конфиге (локальный прокси клиента)
+ONEKEY_MIXED_PORT = _env_int("VPN_ONEKEY_MIXED_PORT", 2080)
+# Секретный токен /api/onekey; пусто = endpoint без токена (только для
+# локального запуска; на публичном сервере обязательно задайте свой токен)
+ONEKEY_TOKEN = _env_str("VPN_ONEKEY_TOKEN", "")
+
 # ============ КАТАЛОГ ИСТОЧНИКОВ ============
 # TTL суточного каталога, секунды
 CATALOG_REFRESH_SECONDS = _env_int("VPN_CATALOG_REFRESH_SECONDS", 24 * 60 * 60)
