@@ -105,6 +105,15 @@ SPEED_TIMEOUT = _env_int("VPN_SPEED_TIMEOUT", 15)
 CHECK_RETRIES_ON_TIMEOUT = _env_int("VPN_CHECK_RETRIES_ON_TIMEOUT", 0)
 # Таймаут проверки страницы сервиса (ChatGPT), секунды
 SERVICE_TIMEOUT = _env_int("VPN_SERVICE_TIMEOUT", 10)
+# Проверка QUIC/HTTP3 через туннель: hysteria2 и tuic работают поверх UDP,
+# и ТСПУ часто режет именно UDP, оставляя TCP нетронутым. Пустая строка
+# отключает проверку (тогда quic в записи пула не появляется).
+QUIC_TEST_URL = _env_str("VPN_QUIC_TEST_URL", "https://cloudflare-quic.com/")
+QUIC_TIMEOUT = _env_int("VPN_QUIC_TIMEOUT", 10)
+# Геопроверка серверов через ip-api.com: определяет страну и ASN, чтобы
+# помечать серверы с российским IP (для обхода блокировок они бесполезны).
+# Выключается переменной VPN_GEOIP_ENABLED=0 — тогда внешних запросов нет.
+GEOIP_ENABLED = _env_bool("VPN_GEOIP_ENABLED", True)
 
 # ============ ПУЛ ============
 # Успешных проверок подряд до статуса "стабильный"

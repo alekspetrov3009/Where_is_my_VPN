@@ -20,7 +20,8 @@ from config_parser import parse_uri_to_singbox_outbound
 from config import (TEST_URL, TEST_URL_FALLBACK, CHECK_TIMEOUT, FAST_CHECK_TIMEOUT,
                     CHECK_CONCURRENCY, SERVICE_CONCURRENCY, POOL_CONCURRENCY,
                     POOL_RECHECK_SECONDS, SPEED_RECHECK_SECONDS, DISCOVERY_BATCH_SIZE,
-                    SPEED_BYTES, SPEED_TIMEOUT, CHECK_RETRIES_ON_TIMEOUT, SERVICE_TIMEOUT)
+                    SPEED_BYTES, SPEED_TIMEOUT, CHECK_RETRIES_ON_TIMEOUT, SERVICE_TIMEOUT,
+                    QUIC_TEST_URL, QUIC_TIMEOUT)
 
 # ============ ТАЙМАУТЫ И ЛИМИТЫ ПРОВЕРКИ ============
 # Все значения читаются из config.py (переменные окружения VPN_*).
@@ -388,12 +389,50 @@ def measure_download_speed(proxy_port, speed_bytes=None):
     return result
 
 
+def measure_quic_reachability(proxy_port):
+    """Проверяет, проходит ли QUIC (HTTP/3) через туннель.
+
+    Зачем отдельная проверка: hysteria2 и tuic работают поверх QUIC/UDP, и ТСПУ
+    часто режет именно UDP, оставляя TCP нетронутым. Тогда сервер показывает
+    отличный TCP-пинг и «рабочий» статус, но реальный трафик через него
+    деградирует. TCP-замер скорости такую деградацию не видит.
+
+    Запрос идёт с http_version=3 (curl_cffi/libcurl с HTTP/3), и успехом
+    считается только фактически согласованный HTTP/3: если QUIC не прошёл,
+    libcurl откатился бы на TCP, и это не доказательство работоспособности UDP.
+    """
+    result = {"checked_at": time.time(), "ok": False, "http_version": None}
+    started = time.monotonic()
+    try:
+        with browser_requests.Session(trust_env=False) as session:
+            response = session.get(
+                QUIC_TEST_URL, proxy=f"http://127.0.0.1:{proxy_port}",
+                impersonate="chrome", timeout=QUIC_TIMEOUT,
+                allow_redirects=True, http_version=3, stream=True)
+            try:
+                version = str(getattr(response, "http_version", "") or "")
+                result["http_version"] = version
+                if response.status_code != 200:
+                    raise ValueError(f"HTTP {response.status_code}")
+                # Откат на TCP означает, что QUIC не прошёл: не засчитываем.
+                if version != "3":
+                    raise ValueError(f"QUIC не согласован (HTTP/{version or '?'}, ожидался HTTP/3)")
+                result["ok"] = True
+            finally:
+                response.close()
+        result["latency"] = int((time.monotonic() - started) * 1000)
+    except Exception as exc:
+        result["error"] = str(exc)[:250]
+    return result
+
+
 async def probe_services(singbox_path, uri, measure_speed=False, speed_only=False):
     """Один изолированный sing-box на URI, затем HTTPS-проверка ChatGPT."""
     process = None
     config_path = None
     results = {}
     speed = None
+    quic = None
     try:
         outbound = parse_uri_to_singbox_outbound(uri, "service-proxy")
         if not outbound:
@@ -437,13 +476,24 @@ async def probe_services(singbox_path, uri, measure_speed=False, speed_only=Fals
             probes = {name: asyncio.create_task(
                 asyncio.to_thread(check_service_page, port, url, markers))
                 for name, (url, markers) in SERVICE_TARGETS.items()}
+            # QUIC-проверка идёт тем же пулом: она тоже HTTP-запрос через
+            # туннель, отдельный sing-box для неё не нужен.
+            quic_task = None
+            if QUIC_TEST_URL:
+                quic_task = asyncio.create_task(
+                    asyncio.to_thread(measure_quic_reachability, port))
             try:
                 for name, task in probes.items():
                     results[name] = await asyncio.shield(task)
+                if quic_task is not None:
+                    quic = await asyncio.shield(quic_task)
             except asyncio.CancelledError:
                 # Дожидаемся всех потоков до остановки sing-box: иначе они
                 # обратятся к уже закрытому прокси-порту.
-                await asyncio.gather(*probes.values(), return_exceptions=True)
+                pending = list(probes.values())
+                if quic_task is not None:
+                    pending.append(quic_task)
+                await asyncio.gather(*pending, return_exceptions=True)
                 raise
         if measure_speed:
             async with SPEED_LOCK:
@@ -471,6 +521,8 @@ async def probe_services(singbox_path, uri, measure_speed=False, speed_only=Fals
             except OSError:
                 pass
     report = {"checked_at": datetime.now().strftime("%d.%m.%Y %H:%M:%S"), "results": results}
+    if quic is not None:
+        report["quic"] = quic
     if measure_speed:
         report["speed"] = speed or {"checked_at": time.time(), "mbps": None, "error": "Не удалось запустить замер"}
     return report

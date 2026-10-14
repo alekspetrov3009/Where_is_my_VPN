@@ -236,6 +236,20 @@ def _parse_tuic(parsed, get_q, tag):
     return outbound
 
 
+def extract_host(uri):
+    """Хост (IP или домен) из URI любого поддерживаемого протокола.
+
+    Нужен для геопроверки: vmess хранит адрес в Base64-JSON, а ss — в
+    authority, который urlparse портит (lowercase ломает base64), поэтому
+    адрес берётся из уже разобранного outbound, а не из urlparse напрямую.
+    """
+    outbound = parse_uri_to_singbox_outbound(uri, "geo")
+    if not outbound:
+        return None
+    host = outbound.get("server")
+    return host if isinstance(host, str) and host else None
+
+
 def parse_uri_to_singbox_outbound(uri, tag):
     """Преобразует VPN-URI в outbound-конфигурацию sing-box.
 

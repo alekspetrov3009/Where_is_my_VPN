@@ -100,6 +100,7 @@ def load_pool(pool_file=None):
                               "successful_checks": successes, "stable": successes >= STABLE_CHECKS,
                               "added_at": added_at,
                               "services": item.get("services") if isinstance(item.get("services"), dict) else {},
+                              "geo": item.get("geo") if isinstance(item.get("geo"), dict) else None,
                               "speed": item.get("speed") if isinstance(item.get("speed"), dict) else None})
             pool[list_type] = clean
         return pool
@@ -116,6 +117,7 @@ def save_pool(public_data, pool_file=None):
             list_type: [{"uri": c["uri"], "latency": c.get("latency", 0), "source": c.get("source", "unknown"),
                          "successful_checks": c.get("successful_checks", 0), "added_at": c.get("added_at"),
                          "speed": c.get("speed"),
+                         "geo": c.get("geo"),
                          "services": c.get("services", {})} for c in public_data[list_type].get("working", [])]
             for list_type in ("black", "white")
         }

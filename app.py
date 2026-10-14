@@ -24,9 +24,9 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 # ============ МОДУЛИ ПРИЛОЖЕНИЯ ============
 from config import (SERVER_PORT, SERVER_HOST, ADMIN_PATH, ADMIN_USERNAME,
                     ADMIN_PASSWORD, OPEN_BROWSER, ONEKEY_LIMIT, ONEKEY_MIXED_PORT,
-                    ONEKEY_TOKEN)
+                    ONEKEY_TOKEN, GEOIP_ENABLED)
 from paths import get_resource_path
-from config_parser import URI_PREFIXES, parse_uri_to_singbox_outbound
+from config_parser import URI_PREFIXES, parse_uri_to_singbox_outbound, extract_host
 from storage import (STABLE_CHECKS, load_config, save_config, get_saved_singbox_path,
                      save_singbox_path, schedule_scope, load_check_schedule,
                      save_check_schedule, load_pool, save_pool as _save_pool_state)
@@ -42,6 +42,8 @@ from prober import (TEST_URL, TEST_URL_FALLBACK, CHECK_TIMEOUT, FAST_CHECK_TIMEO
                     _classify_error,
                     probe_uri_standalone, probe_services)
 from check_scheduler import build_pool_plan, interleave_ranges
+from clash_export import build_clash_config
+from geoip import lookup_ip
 
 # ============ НАСТРОЙКИ ============
 # Порт, хост, путь админки и учётные данные читаются из config.py (переменные
@@ -266,19 +268,7 @@ def build_onekey_config(limit=None):
             unique[key] = config
     candidates = list(unique.values())
 
-    def sort_key(config):
-        # Свежий замер скорости (правило 3 часов — как currentSpeed на фронте).
-        speed = (config.get("speed") or {})
-        fresh_speed = speed.get("mbps") if (
-            isinstance(speed.get("mbps"), (int, float))
-            and speed.get("mbps") == speed.get("mbps")  # не NaN
-            and time.time() - speed.get("checked_at", 0) <= SPEED_RECHECK_SECONDS
-        ) else None
-        return (config.get("latency") or 9999,
-                -(fresh_speed or 0),
-                -config.get("successful_checks", 0))
-
-    candidates.sort(key=sort_key)
+    candidates.sort(key=onekey_sort_key)
 
     outbounds = []
     seen_tags = set()
@@ -349,37 +339,95 @@ def build_onekey_subscription(limit=None):
             unique[key] = config
     candidates = list(unique.values())
 
-    def sort_key(config):
-        # Свежий замер скорости (правило 3 часов — как currentSpeed на фронте).
-        speed = (config.get("speed") or {})
-        fresh_speed = speed.get("mbps") if (
-            isinstance(speed.get("mbps"), (int, float))
-            and speed.get("mbps") == speed.get("mbps")  # не NaN
-            and time.time() - speed.get("checked_at", 0) <= SPEED_RECHECK_SECONDS
-        ) else None
-        return (config.get("latency") or 9999,
-                -(fresh_speed or 0),
-                -config.get("successful_checks", 0))
-
-    candidates.sort(key=sort_key)
+    candidates.sort(key=onekey_sort_key)
     uris = [c["uri"] for c in candidates[:limit]]
     if not uris:
         return None, "Нет подходящих серверов для подписки"
     return base64.b64encode("\n".join(uris).encode()).decode(), None
 
 
-def _onekey_wants_json(request):
-    """Определяет, ожидает ли клиент sing-box JSON вместо base64-подписки.
+def _onekey_format(request):
+    """Определяет формат ответа /api/onekey: "clash", "json" или "base64".
 
-    Явный ?format=json|base64 имеет приоритет; иначе — User-Agent:
-    sing-box и его GUI-обёртки (SFA/SFI/SFM/SFT, Hiddify) понимают JSON,
-    остальные клиенты-подписки ждут base64-список URI.
+    Явный ?format=... имеет приоритет; иначе — User-Agent. Клиенты Clash и
+    Mihomo (Clash Verge, FlClash, Stash) ждут YAML, sing-box и его GUI-обёртки
+    (SFA/SFI/SFM/SFT, Hiddify) — JSON, остальные подписки — base64-список URI.
     """
     fmt = request.query_params.get("format", "").strip().lower()
-    if fmt in ("json", "base64"):
-        return fmt == "json"
+    if fmt in ("json", "base64", "clash", "yaml", "mihomo"):
+        return "clash" if fmt in ("clash", "yaml", "mihomo") else fmt
     ua = (request.headers.get("user-agent") or "").lower()
-    return any(marker in ua for marker in ("sing-box", "sfa/", "sfi/", "sfm/", "sft/", "hiddify"))
+    if any(marker in ua for marker in ("clash", "mihomo", "stash", "flclash")):
+        return "clash"
+    if any(marker in ua for marker in ("sing-box", "sfa/", "sfi/", "sfm/", "sft/", "hiddify")):
+        return "json"
+    return "base64"
+
+
+def build_onekey_clash(limit=None):
+    """Собирает Clash/Mihomo YAML из лучших рабочих серверов.
+
+    Отбор тот же, что у base64-подписки (стабильные, дедуп по конечной точке,
+    сортировка по пингу и свежей скорости), меняется только формат вывода.
+    Возвращает (yaml_text, error_message); ровно один из элементов не None.
+    """
+    if limit is None:
+        limit = ONEKEY_LIMIT
+    candidates = [c for c in get_service_working(require_all_services=False) if c.get("stable")]
+    if not candidates:
+        return None, "Нет стабильных серверов — ключ появится после проверки пула"
+    unique = {}
+    for config in candidates:
+        key = canonical_endpoint(config["uri"])
+        if key not in unique:
+            unique[key] = config
+    candidates = list(unique.values())
+    candidates.sort(key=onekey_sort_key)
+    uris = [c["uri"] for c in candidates[:limit]]
+    if not uris:
+        return None, "Нет подходящих серверов для подписки"
+    return build_clash_config(uris, mixed_port=ONEKEY_MIXED_PORT)
+
+
+def _onekey_wants_json(request):
+    """Совместимость: True, если клиент ожидает sing-box JSON."""
+    return _onekey_format(request) == "json"
+
+
+def onekey_sort_key(config):
+    """Сортировка кандидатов: пинг, свежая скорость, число успешных проверок."""
+    speed = (config.get("speed") or {})
+    fresh_speed = speed.get("mbps") if (
+        isinstance(speed.get("mbps"), (int, float))
+        and speed.get("mbps") == speed.get("mbps")  # не NaN
+        and time.time() - speed.get("checked_at", 0) <= SPEED_RECHECK_SECONDS
+    ) else None
+    return (config.get("latency") or 9999,
+            -(fresh_speed or 0),
+            -config.get("successful_checks", 0))
+
+
+async def resolve_geo(uri, previous=None):
+    """Геоданные сервера по URI; previous переиспользуется, если хост тот же.
+
+    Возвращает dict geoip.lookup_ip или None. Сбой сети не считается ошибкой
+    проверки: запись просто остаётся без геоданных.
+    """
+    if not GEOIP_ENABLED:
+        return None
+    try:
+        host = extract_host(uri)
+        if not host:
+            return None
+        if previous and previous.get("host") == host:
+            return previous
+        data = await asyncio.to_thread(lookup_ip, host)
+        if not data:
+            return None
+        return {**data, "host": host}
+    except Exception as exc:
+        print(f"⚠️ Геопроверка {uri[:40]}: {exc}")
+        return None
 
 
 async def maintain_working_pool(singbox_path, first_sweep):
@@ -403,6 +451,9 @@ async def maintain_working_pool(singbox_path, first_sweep):
                     replacement = {**item, "latency": latency, "services": services,
                                    "successful_checks": successes, "stable": successes >= STABLE_CHECKS,
                                    "last_checked_at": time.time()}
+                    # Геоданные переиспользуются, пока хост тот же: внешний
+                    # запрос на каждую перепроверку исчерпал бы лимит ip-api.
+                    replacement["geo"] = await resolve_geo(item["uri"], item.get("geo"))
                 # Замер скорости мог обновить объект во время сетевой проверки.
                 current = public_data[list_type]["working"]
                 if replacement is not None:
@@ -657,6 +708,10 @@ async def _run_check_core(check_type, progress_callback=None, source_id=None):
                   "added_at": previous_added or format_now()}
         async with service_slots:
             config["services"] = await probe_services(singbox_path, uri)
+        # Геоданные: сервер с российским IP для обхода блокировок бесполезен.
+        # Запрос в отдельном потоке — urllib блокирующий, а лимит ip-api
+        # заставляет ждать, и это не должно останавливать event loop.
+        config["geo"] = await resolve_geo(uri)
         config["last_checked_at"] = time.time()
         public_data[kind]["working"].append(config)
         await finish_config(source)
@@ -1193,12 +1248,26 @@ async def onekey(request: Request, token: str = ""):
 
     Формат ответа: base64-список URI (универсальная подписка для v2rayNG,
     Nekoray, Streisand, Hiddify) — по умолчанию; sing-box JSON с urltest —
-    при ?format=json или User-Agent sing-box/SFA/SFI/SFM/SFT/Hiddify.
+    при ?format=json или User-Agent sing-box/SFA/SFI/SFM/SFT/Hiddify;
+    Clash/Mihomo YAML — при ?format=clash или User-Agent clash/mihomo.
     Защита: если задан VPN_ONEKEY_TOKEN, URL обязан содержать ?token=<значение>.
     """
     if ONEKEY_TOKEN and token != ONEKEY_TOKEN:
         raise HTTPException(status_code=403, detail="Неверный токен")
-    if _onekey_wants_json(request):
+    fmt = _onekey_format(request)
+    if fmt == "clash":
+        text, error = build_onekey_clash()
+        if error:
+            raise HTTPException(status_code=503, detail=error)
+        return Response(
+            content=text,
+            media_type="text/yaml; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="onekey-clash.yaml"',
+                     "profile-title": "Where is my VPN",
+                     "profile-update-interval": "1",
+                     "Cache-Control": "no-store"}
+        )
+    if fmt == "json":
         config, error = build_onekey_config()
         if error:
             raise HTTPException(status_code=503, detail=error)
