@@ -29,7 +29,8 @@ from paths import get_resource_path
 from config_parser import URI_PREFIXES, parse_uri_to_singbox_outbound, extract_host
 from storage import (STABLE_CHECKS, load_config, save_config, get_saved_singbox_path,
                      save_singbox_path, schedule_scope, load_check_schedule,
-                     save_check_schedule, load_pool, save_pool as _save_pool_state)
+                     save_check_schedule, load_pool, save_pool as _save_pool_state,
+                     load_dead_cache, save_dead_cache)
 from singbox_manager import (find_singbox as _find_singbox, run_singbox_version,
                              download_singbox as _download_singbox)
 from catalog import (FALLBACK_LISTS, GOIDA_FALLBACK_LISTS, EXTRA_FALLBACK_LISTS,
@@ -80,6 +81,15 @@ AVAILABLE_LISTS = {**FALLBACK_LISTS, **GOIDA_FALLBACK_LISTS, **EXTRA_FALLBACK_LI
 # различий между хостами, напр. Windows Server 2022 vs обычный ПК).
 CHECK_STATS = {"black": {}, "white": {}}
 
+# Кэш заведомо нерабочих точек: {каноническая точка: время последней неудачи}.
+# Каталог содержит десятки тысяч конфигураций, и большинство мертвы. Без кэша
+# каждый проход заново тратит на них полный таймаут. Заполняется при старте из
+# .vpn_dead.json; точки из кэша пропускаются, пока запись не протухнет.
+DEAD_CACHE = {}
+# Точки, которые провалились в текущем проходе: сбрасываются в файл один раз
+# в конце, а не на каждую неудачу (иначе запись доминирует над проверкой).
+DEAD_PENDING = set()
+
 # Переопределяем stdout/stderr на UTF-8, чтобы эмодзи работали в скомпилированном exe.
 # Guard: под pythonw или перенаправленным выводом .buffer может отсутствовать.
 try:
@@ -118,6 +128,54 @@ def save_pool():
 def find_singbox():
     """Обёртка: singbox_manager.find_singbox с сохранённым путём из конфига."""
     return _find_singbox(get_saved_singbox_path)
+
+
+def load_dead():
+    """Загружает кэш нерабочих точек в глобальное состояние."""
+    global DEAD_CACHE
+    DEAD_CACHE = load_dead_cache(DEAD_FILE)
+    return DEAD_CACHE
+
+
+def flush_dead():
+    """Сбрасывает накопленные неудачи текущего прохода в файл.
+
+    Вызывается один раз в конце прохода: запись на каждую неудачу давала бы
+    тысячи обращений к диску и конкурировала бы с самими проверками.
+    """
+    global DEAD_PENDING
+    if not DEAD_PENDING:
+        return 0
+    now = time.time()
+    for endpoint in DEAD_PENDING:
+        DEAD_CACHE[endpoint] = now
+    DEAD_PENDING = set()
+    save_dead_cache(DEAD_CACHE, DEAD_FILE)
+    return len(DEAD_CACHE)
+
+
+def is_dead(uri):
+    """True, если точка недавно провалилась и её можно пропустить."""
+    if not DEAD_CACHE:
+        return False
+    return canonical_endpoint(uri) in DEAD_CACHE
+
+
+def mark_dead(uri):
+    """Помечает точку как нерабочую (применится в конце прохода)."""
+    DEAD_PENDING.add(canonical_endpoint(uri))
+
+
+def mark_alive(uri):
+    """Точка ответила: убираем её из кэша и из очереди на запись.
+
+    Без этого ожившая точка оставалась бы в кэше до истечения TTL, даже
+    если её только что успешно проверили.
+    """
+    endpoint = canonical_endpoint(uri)
+    DEAD_PENDING.discard(endpoint)
+    if DEAD_CACHE.pop(endpoint, None) is not None:
+        save_dead_cache(DEAD_CACHE, DEAD_FILE)
 
 
 async def probe_uri_standalone(singbox_path, tag, uri, fast=False):
@@ -162,7 +220,7 @@ from prober import check_service_page  # noqa: E402
 from catalog import assemble_catalog, urlopen_insecure  # noqa: E402
 from catalog import get_source_catalog as _get_catalog_impl  # noqa: E402
 from storage import load_pool as _load_pool_impl  # noqa: E402
-from paths import POOL_FILE, SCHEDULE_FILE  # noqa: E402
+from paths import POOL_FILE, SCHEDULE_FILE, DEAD_FILE  # noqa: E402
 from prober import SPEED_BYTES  # noqa: E402
 
 
@@ -660,8 +718,13 @@ async def _run_check_core(check_type, progress_callback=None, source_id=None):
 
     def eligible(source, item):
         kind, uri = item
-        return (kind in kinds and (source_id is None or source == source_id)
-                and (source, kind, canonical_endpoint(uri)) not in known)
+        if kind not in kinds or (source_id is not None and source != source_id):
+            return False
+        if (source, kind, canonical_endpoint(uri)) in known:
+            return False
+        # Недавно провалившиеся точки пропускаем: каталог огромен, и повторная
+        # проверка заведомо мёртвых конфигураций съедает почти всё время.
+        return not is_dead(uri)
 
     pools = catalog["plan"]["pools"] or []
     scope = schedule_scope(check_type, source_id)
@@ -756,8 +819,12 @@ async def _run_check_core(check_type, progress_callback=None, source_id=None):
                     retry_items.append((uri_index, (source, (kind, uri))))
                     continue
                 if is_ok:
+                    mark_alive(uri)
                     service_tasks.append(asyncio.create_task(add_working(uri, result_data, source, kind)))
                 else:
+                    # Перехват DPI и ошибки парсинга детерминированы, как и
+                    # обычная недоступность: кэшируем все неудачи одинаково.
+                    mark_dead(uri)
                     failed_configs.append({"uri": uri, "source": source, "list_type": kind, "error": result_data})
                 checked += 1
                 kind_checked_count[kind] += 1
@@ -801,9 +868,13 @@ async def _run_check_core(check_type, progress_callback=None, source_id=None):
     for kind in kinds:
         public_data[kind]["last_update"] = format_now()
     save_pool()
+    # Кэш неудач сбрасываем один раз в конце прохода: запись на каждую
+    # неудачу конкурировала бы с самими проверками.
+    dead_total = flush_dead()
     _collect_check_stats(kinds, check_type, failed_configs, source_id,
                          kind_checked_count, skipped_sources)
-    print(f"💾 Пул сохранён: {check_type} — рабочих {len(working_configs)}, проверено {checked}")
+    print(f"💾 Пул сохранён: {check_type} — рабочих {len(working_configs)}, проверено {checked}, "
+          f"в кэше нерабочих точек: {dead_total}")
     return working_configs, failed_configs, checked
 
 # ============ СЕРВЕРНОЕ АВТООБНОВЛЕНИЕ ============
@@ -863,6 +934,11 @@ async def lifespan(app: FastAPI):
     for list_type in ("black", "white"):
         public_data[list_type]["working"] = pool[list_type]
     print(f"💾 Загружен сохранённый пул: black={len(pool['black'])}, white={len(pool['white'])}")
+
+    # Кэш нерабочих точек: переживает перезапуски, избавляет от повторной
+    # проверки заведомо мёртвых конфигураций из огромного каталога.
+    dead = load_dead()
+    print(f"🪦 Загружен кэш нерабочих точек: {len(dead)}")
 
     # Запускаем фоновые задачи
     auto_update_settings["task"] = asyncio.create_task(server_auto_update_loop())

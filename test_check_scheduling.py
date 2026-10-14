@@ -200,17 +200,49 @@ class SchedulingTests(unittest.IsolatedAsyncioTestCase):
         plan = app.build_pool_plan({"s1": 1000, "s2": 10000, "s3": 1000000})
         self.assertEqual(plan["total"], 1011000)
         self.assertEqual(plan["pool_size"], 202200)
-        self.assertEqual(plan["weights"], {"s1": 1000, "s2": 10000, "s3": 202200})
         self.assertEqual(plan["pool_count"], 5)
+        # Веса сглажены (корень из размера) и ограничены множителем cap:
+        # чистую пропорцию не проверяем — она и была источником перекоса.
+        weights = plan["weights"]
+        self.assertGreater(weights["s1"], 0)
+        self.assertLess(weights["s1"], weights["s2"])
+        self.assertLessEqual(weights["s2"], weights["s3"])
+        # Главный инвариант: каждый источник выбран целиком, ничего не потеряно.
+        totals = {s: sum(p[s] for p in plan["pools"]) for s in ("s1", "s2", "s3")}
+        self.assertEqual(totals, {"s1": 1000, "s2": 10000, "s3": 1000000})
         # Маленькие источники представлены уже в первом пуле.
         first = plan["pools"][0]
         self.assertEqual(sum(first.values()), 202200)
         self.assertGreater(first["s1"], 0)
         self.assertGreater(first["s2"], 0)
-        # Маленькие выбираются целиком в первых пулах, большой — остаток.
-        totals = {s: sum(p[s] for p in plan["pools"]) for s in ("s1", "s2", "s3")}
-        self.assertEqual(totals, {"s1": 1000, "s2": 10000, "s3": 1000000})
         self.assertEqual(sum(plan["pools"][1].values()), 202200)
+
+    async def test_weight_cap_limits_dominant_source(self):
+        """Один агрегатор не должен забирать почти весь пул.
+
+        Реальный случай: hidashimora даёт 15 768 конфигураций против 98 у
+        matin. Чистая пропорция отдавала агрегатору ~42% каждого пула.
+        """
+        counts = {"big": 15768, "mid": 5291, "small": 98}
+        capped = app.build_pool_plan(counts, weight_cap=4.0)
+        big_share = capped["pools"][0]["big"] / capped["pool_size"]
+        self.assertLess(big_share, 0.5, "агрегатор занял больше половины пула")
+        # Ограничение не должно терять конфигурации.
+        totals = {s: sum(p[s] for p in capped["pools"]) for s in counts}
+        self.assertEqual(totals, counts)
+
+    async def test_weight_cap_zero_means_unlimited(self):
+        """cap=0 — прежнее поведение (чистая пропорция), для совместимости."""
+        counts = {"big": 10000, "small": 100}
+        plan = app.build_pool_plan(counts, weight_cap=0)
+        self.assertGreater(plan["weights"]["big"], plan["weights"]["small"])
+        totals = {s: sum(p[s] for p in plan["pools"]) for s in counts}
+        self.assertEqual(totals, counts)
+
+    async def test_all_zero_counts_terminates(self):
+        """Источники с нулём не должны зациклить построение плана."""
+        plan = app.build_pool_plan({"a": 0, "b": 0})
+        self.assertEqual(plan["pools"], [])
 
     async def test_empty_plan_terminates(self):
         plan = app.build_pool_plan({})

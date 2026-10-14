@@ -18,7 +18,8 @@ import time
 import urllib.request
 
 from check_scheduler import build_pool_plan, interleave_ranges
-from config import CATALOG_REFRESH_SECONDS, CATALOG_DOWNLOAD_CONCURRENCY, GOIDA_BASE_URL
+from config import (CATALOG_REFRESH_SECONDS, CATALOG_DOWNLOAD_CONCURRENCY,
+                    GOIDA_BASE_URL, SOURCE_WEIGHT_CAP)
 
 _UNVERIFIED_SSL_CONTEXT = ssl._create_unverified_context()
 
@@ -316,7 +317,8 @@ def assemble_catalog(files):
     for source, kinds in typed.items():
         # Black/White одного источника тоже перемешиваются, а не идут длинными блоками.
         groups[source] = tuple(interleave_ranges(kinds, {k: len(v) for k, v in kinds.items()}, {}))
-    plan = build_pool_plan({s: len(items) for s, items in groups.items()})
+    plan = build_pool_plan({s: len(items) for s, items in groups.items()},
+                           weight_cap=SOURCE_WEIGHT_CAP)
     # Идентификатор содержимого: файлы обновились — чекпоинт старого
     # каталога недействителен, начинаем с первого пула. Порядок детерминирован.
     digest = hashlib.blake2b(digest_size=16)

@@ -2,15 +2,17 @@
 
 Все записи атомарные (tmp + os.replace), чтобы прерванный процесс не оставлял
 битых JSON. Пул переживает перезапуски; чекпоинты позволяют продолжить
-проход каталога с последнего завершённого пула.
+проход каталога с последнего завершённого пула. Кэш нерабочих точек
+(.vpn_dead.json) избавляет от повторной проверки заведомо мёртвых URI.
 """
 import json
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 
-from paths import CONFIG_FILE, POOL_FILE, SCHEDULE_FILE
-from config import STABLE_CHECKS
+from paths import CONFIG_FILE, POOL_FILE, SCHEDULE_FILE, DEAD_FILE
+from config import STABLE_CHECKS, DEAD_CACHE_SECONDS
 
 
 def load_config():
@@ -127,3 +129,47 @@ def save_pool(public_data, pool_file=None):
         os.replace(tmp_path, pool_file)
     except Exception as e:
         print(f"⚠️ Не удалось сохранить пул: {e}")
+
+
+def load_dead_cache(dead_file=None):
+    """Читает кэш нерабочих точек, отбрасывая протухшие записи.
+
+    Ключ — каноническая точка (URI без #fragment), значение — время последней
+    неудачи. Каталог содержит десятки тысяч конфигураций, и большинство из них
+    мертвы: без кэша каждый проход заново тратит на них полный таймаут.
+    Записи старше DEAD_CACHE_SECONDS выбрасываются, чтобы точка могла ожить.
+
+    Возвращает dict {endpoint: timestamp}.
+    """
+    dead_file = dead_file or DEAD_FILE
+    try:
+        with open(dead_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    cutoff = time.time() - DEAD_CACHE_SECONDS
+    cache = {}
+    for key, value in data.items():
+        if not isinstance(key, str) or not key:
+            continue
+        try:
+            stamp = float(value)
+        except (TypeError, ValueError):
+            continue
+        if stamp >= cutoff:
+            cache[key] = stamp
+    return cache
+
+
+def save_dead_cache(cache, dead_file=None):
+    """Сохраняет кэш нерабочих точек; запись атомарная."""
+    dead_file = dead_file or DEAD_FILE
+    try:
+        tmp_path = Path(dead_file).with_suffix(".tmp")
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            json.dump(cache, f, ensure_ascii=False)
+        os.replace(tmp_path, dead_file)
+    except Exception as e:
+        print(f"⚠️ Не удалось сохранить кэш нерабочих точек: {e}")

@@ -16,6 +16,8 @@ docker-compose.yml
 .vpn_pool.tmp
 .vpn_schedule.json
 .vpn_schedule.tmp
+.vpn_dead.json
+.vpn_dead.tmp
 dist/
 build/
 *.spec

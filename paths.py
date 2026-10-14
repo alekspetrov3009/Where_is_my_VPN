@@ -39,6 +39,10 @@ SINGBOX_EXE = SINGBOX_DIR / SINGBOX_BINARY_NAME
 CONFIG_FILE = DATA_DIR / ".singbox_config.json"
 POOL_FILE = DATA_DIR / ".vpn_pool.json"
 SCHEDULE_FILE = DATA_DIR / ".vpn_schedule.json"
+# Кэш заведомо нерабочих точек: каталог содержит десятки тысяч конфигураций,
+# и большинство из них мертвы. Без кэша каждый проход заново тратит на них
+# полный таймаут.
+DEAD_FILE = DATA_DIR / ".vpn_dead.json"
 
 
 def get_resource_path(relative_path):
