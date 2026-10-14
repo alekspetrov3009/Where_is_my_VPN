@@ -3,6 +3,7 @@ from itertools import islice
 from contextlib import asynccontextmanager
 import base64
 import copy
+import hashlib
 import io
 import json
 import os
@@ -464,6 +465,56 @@ def onekey_sort_key(config):
     return (config.get("latency") or 9999,
             -(fresh_speed or 0),
             -config.get("successful_checks", 0))
+
+
+def subscription_userinfo():
+    """Заголовок Subscription-Userinfo для клиентов-подписок.
+
+    Формат (де-факто стандарт, разбирается Hiddify и совместимыми):
+    `upload=0; download=N; total=M; expire=E`, где download/total — байты,
+    expire — Unix-время. Клиент показывает из этого «остаток трафика» и дату
+    окончания подписки.
+
+    Смысл для этого проекта: подписка бессрочная и безлимитная, поэтому
+    total=0 и expire=0 — клиент трактует их как «бесконечно» (проверено по
+    profile_parser.dart: `total == 0 ? infiniteTrafficThreshold : total`).
+    upload/download обязательны: без них клиент игнорирует заголовок целиком,
+    поэтому подставляем нули. В download кладём объём рабочего пула — это
+    единственная осмысленная «величина», которую мы знаем.
+    """
+    working = get_service_working(require_all_services=False)
+    # Оценка объёма: длина URI как приблизительный «трафик» подписки.
+    volume = sum(len(c.get("uri", "")) for c in working)
+    return f"upload=0; download={volume}; total=0; expire=0"
+
+
+def subscription_etag(payload):
+    """ETag для тела подписки: SHA-256 от содержимого.
+
+    Нужен, чтобы клиент не скачивал неизменившуюся подписку: при совпадении
+    If-None-Match сервер отвечает 304 без тела. Пул перепроверяется каждые
+    10 минут, но меняется далеко не всегда, а подписка может быть крупной.
+    """
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return f'"{digest[:32]}"'
+
+
+def etag_matches(request, etag):
+    """True, если клиент уже имеет эту версию (If-None-Match).
+
+    Сравнение терпимо к слабым ETag (префикс W/) и к списку значений:
+    клиенты присылают заголовок в разных формах.
+    """
+    header = request.headers.get("if-none-match")
+    if not header:
+        return False
+    candidates = [item.strip() for item in header.split(",")]
+    for candidate in candidates:
+        if candidate == "*":
+            return True
+        if candidate.removeprefix("W/") == etag:
+            return True
+    return False
 
 
 async def resolve_geo(uri, previous=None):
@@ -1328,6 +1379,9 @@ async def onekey(request: Request, token: str = ""):
     при ?format=json или User-Agent sing-box/SFA/SFI/SFM/SFT/Hiddify;
     Clash/Mihomo YAML — при ?format=clash или User-Agent clash/mihomo.
     Защита: если задан VPN_ONEKEY_TOKEN, URL обязан содержать ?token=<значение>.
+
+    Все форматы отдают ETag и Subscription-Userinfo: клиент не перекачивает
+    неизменившуюся подписку (304) и показывает объём/срок действия.
     """
     if ONEKEY_TOKEN and token != ONEKEY_TOKEN:
         raise HTTPException(status_code=403, detail="Неверный токен")
@@ -1336,34 +1390,38 @@ async def onekey(request: Request, token: str = ""):
         text, error = build_onekey_clash()
         if error:
             raise HTTPException(status_code=503, detail=error)
-        return Response(
-            content=text,
-            media_type="text/yaml; charset=utf-8",
-            headers={"Content-Disposition": 'attachment; filename="onekey-clash.yaml"',
-                     "profile-title": "Where is my VPN",
-                     "profile-update-interval": "1",
-                     "Cache-Control": "no-store"}
-        )
-    if fmt == "json":
+        media_type = "text/yaml; charset=utf-8"
+        filename = "onekey-clash.yaml"
+    elif fmt == "json":
         config, error = build_onekey_config()
         if error:
             raise HTTPException(status_code=503, detail=error)
-        return Response(
-            content=json.dumps(config, ensure_ascii=False, indent=2),
-            media_type="application/json",
-            headers={"Content-Disposition": 'attachment; filename="onekey-singbox.json"',
-                     "Cache-Control": "no-store"}
-        )
-    text, error = build_onekey_subscription()
-    if error:
-        raise HTTPException(status_code=503, detail=error)
-    return Response(
-        content=text,
-        media_type="text/plain",
-        headers={"profile-title": "Where is my VPN",
-                 "profile-update-interval": "1",
-                 "Cache-Control": "no-store"}
-    )
+        text = json.dumps(config, ensure_ascii=False, indent=2)
+        media_type = "application/json"
+        filename = "onekey-singbox.json"
+    else:
+        text, error = build_onekey_subscription()
+        if error:
+            raise HTTPException(status_code=503, detail=error)
+        media_type = "text/plain"
+        filename = None
+
+    etag = subscription_etag(f"{fmt}:{text}")
+    # 304 без тела: клиент оставляет свою копию. Проверяем после сборки —
+    # ETag считается от содержимого, а не от состояния пула.
+    if etag_matches(request, etag):
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "no-store"})
+
+    headers = {
+        "ETag": etag,
+        "profile-title": "Where is my VPN",
+        "profile-update-interval": "1",
+        "Subscription-Userinfo": subscription_userinfo(),
+        "Cache-Control": "no-store",
+    }
+    if filename:
+        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return Response(content=text, media_type=media_type, headers=headers)
 
 
 @app.get("/api/public/events")

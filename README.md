@@ -14,6 +14,7 @@
 - **Параллельная проверка:** Многопоточное тестирование конфигураций через `sing-box` с умным распределением свободных портов (исключает конфликты `address already in use`).
 - **Портативность:** Полностью автономный дистрибутив (`Where is my VPN.exe`), не требующий установки Python и не оставляющий следов в реестре или `AppData`.
 - **Один ключ с автопереключением:** Endpoint [`/api/onekey`](app.py) отдаёт подписку из лучших стабильных серверов. Форматы: base64-список URI (универсальный для v2rayNG, Nekoray, Streisand, Hiddify) — по умолчанию; sing-box JSON с `urltest` — при `?format=json` или User-Agent sing-box/SFA/SFI/SFM/SFT/Hiddify; **Clash/Mihomo YAML** — при `?format=clash` или User-Agent clash/mihomo (Clash Verge, FlClash, Stash). Кнопка «🔑 Один ключ» на публичной странице даёт ссылки и QR-код.
+- **Кэширование подписки:** Все форматы отдают `ETag` и `Subscription-Userinfo`. Если подписка не изменилась, клиент получает `304 Not Modified` без тела — пул перепроверяется каждые 10 минут, но меняется далеко не всегда. `Subscription-Userinfo` (`upload=0; download=N; total=0; expire=0`) показывает объём подписки; `total=0` и `expire=0` означают «безлимит и бессрочно».
 - **Веб-интерфейс:**
   - Публичная страница со статусом, рабочими конфигурациями и генерацией QR-кодов.
   - Защищённая админ-панель для управления интервалами, путём к `sing-box` и ручного запуска проверок.
@@ -51,6 +52,7 @@
 ├── test_export_geo.py              # Тесты Clash YAML, QUIC-зонда и геопроверки
 ├── test_sources.py                 # Тесты разбора подписок и реестра источников
 ├── test_dead_cache.py              # Тесты кэша нерабочих точек и весов источников
+├── test_subscription_headers.py    # Тесты ETag и Subscription-Userinfo
 │
 ├── index.html                      # Фронтенд: Публичная страница для пользователей
 ├── admin.html                      # Фронтенд: Интерфейс панели администратора
@@ -137,10 +139,10 @@ python app.py
 ### Проверка работоспособности
 
 ```bat
-python -m unittest test_check_scheduling test_validation test_dpi_hardening test_export_geo test_sources test_dead_cache
+python -m unittest test_check_scheduling test_validation test_dpi_hardening test_export_geo test_sources test_dead_cache test_subscription_headers
 ```
 
-6 падений в `test_validation.py` — предсуществующие (описаны в [AGENTS.md](AGENTS.md)), на работу приложения не влияют. `test_dpi_hardening.py` проверяет парсеры hysteria2/tuic, детектор перехвата и схему конфигов через настоящий `sing-box check`. `test_export_geo.py` — генерацию Clash YAML (разбирается PyYAML, если установлен), QUIC-зонд и геопроверку с подставным API. `test_sources.py` — разбор подписок (текст/base64, устойчивость к не-UTF-8) и инварианты реестра источников. `test_dead_cache.py` — TTL и атомарность кэша, цикл mark→flush→reload и инварианты плана пулов (ни одна конфигурация не теряется и не дублируется). Новые файлы не требуют сети.
+6 падений в `test_validation.py` — предсуществующие (описаны в [AGENTS.md](AGENTS.md)), на работу приложения не влияют. `test_dpi_hardening.py` проверяет парсеры hysteria2/tuic, детектор перехвата и схему конфигов через настоящий `sing-box check`. `test_export_geo.py` — генерацию Clash YAML (разбирается PyYAML, если установлен), QUIC-зонд и геопроверку с подставным API. `test_sources.py` — разбор подписок (текст/base64, устойчивость к не-UTF-8) и инварианты реестра источников. `test_dead_cache.py` — TTL и атомарность кэша, цикл mark→flush→reload и инварианты плана пулов (ни одна конфигурация не теряется и не дублируется). `test_subscription_headers.py` — формат `Subscription-Userinfo` (сверен с реальным парсером Hiddify) и поток ETag/304. Новые файлы не требуют сети.
 
 ---
 
