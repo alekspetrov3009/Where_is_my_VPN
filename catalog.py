@@ -10,6 +10,7 @@ urlopen_insecure: точечный unverified-контекст для корпо
 скачивание бинарей и прочие чувствительные запросы оставались верифицированными.
 """
 import asyncio
+import base64
 import hashlib
 import json
 import ssl
@@ -46,13 +47,71 @@ def make_goida_list(name):
     }
 
 
-GOIDA_FALLBACK_LISTS = {
-    f"goida_{number}.txt": make_goida_list(f"{number}.txt")
-    for number in range(1, 27)
-}
+# Goida VPN отключён: репозиторий AvenCores/goida-vpn-configs удалён (GitHub API
+# отдаёт 404 на сам репозиторий), поэтому 26 захардкоженных URL давали 26
+# ошибок 404 на каждое обновление каталога и ноль конфигураций. Список оставлен
+# пустым, а не удалён вместе с fetch_goida_lists: если репозиторий вернётся,
+# достаточно снова наполнить его — код обнаружения и метка источника целы.
+GOIDA_FALLBACK_LISTS = {}
 
 SOURCE_LABELS = {"igareck": "igareck", "goida": "Goida VPN",
+                 "epodonios": "Epodonios", "barryfar": "barry-far",
+                 "solispirit": "SoliSpirit", "argh94": "Argh94",
+                 "hidashimora": "Anti-RKN",
+                 "delta": "Delta-Kronecker", "radikal": "0xRadikal",
+                 "matin": "MatinGhanbari",
                  "manual": "Ручной импорт", "unknown": "Старый пул (источник неизвестен)"}
+
+# Дополнительные публичные источники. Каждый проверен вручную: URL отвечает и
+# отдаёт разбираемые URI (часть репозиториев содержит только README или
+# метаданные, а некоторые «ss.txt» на деле наполнены vless/vmess — поэтому
+# тип списка ниже задан по фактическому содержимому, а не по имени файла).
+#
+# Все URL идут через raw.githack.com: raw.githubusercontent в РФ часто режется,
+# а githack отдаёт тот же файл с корректным Content-Type.
+#
+# Формат: (source_id, имя, путь в репозитории, тип списка)
+EXTRA_SOURCES = [
+    # Крупные агрегаторы (обновляются каждые 5-15 минут).
+    ("epodonios", "⚫ Epodonios — vless", "Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt", "black"),
+    ("epodonios", "⚫ Epodonios — trojan", "Epodonios/v2ray-configs/main/Splitted-By-Protocol/trojan.txt", "black"),
+    ("epodonios", "⚫ Epodonios — ss", "Epodonios/v2ray-configs/main/Splitted-By-Protocol/ss.txt", "black"),
+    ("epodonios", "⚫ Epodonios — vmess", "Epodonios/v2ray-configs/main/Splitted-By-Protocol/vmess.txt", "black"),
+    ("barryfar", "⚫ barry-far — все конфиги", "barry-far/V2ray-Config/main/All_Configs_Sub.txt", "black"),
+    ("solispirit", "⚫ SoliSpirit — все конфиги", "SoliSpirit/v2ray-configs/main/all_configs.txt", "black"),
+    # Разбивка по протоколам: hysteria2 и tuic важны для обхода DPI.
+    ("argh94", "⚫ Argh94 — Hysteria2", "Argh94/Proxy-List/main/Hysteria2.txt", "black"),
+    ("argh94", "⚫ Argh94 — Trojan", "Argh94/Proxy-List/main/Trojan.txt", "black"),
+    ("argh94", "⚫ Argh94 — Shadowsocks (фактически vless/vmess)", "Argh94/Proxy-List/main/ShadowSocks.txt", "black"),
+    # TGParse намеренно отсутствует: его splitted/* (1206 URI, все base64)
+    # на 100% дублируются Epodonios/barry-far/argh94 — те же Telegram-каналы.
+    # Проверено: assemble_catalog отдаёт все его точки другим источникам,
+    # поэтому загрузка 1.2 МБ не давала ни одного нового сервера.
+    # Источники, ориентированные на РФ.
+    ("hidashimora", "⚫ Anti-RKN — крупный набор", "Hidashimora/free-vpn-anti-rkn/main/configs/1.14.txt", "black"),
+    ("hidashimora", "⚫ Anti-RKN — свежий набор", "Hidashimora/free-vpn-anti-rkn/main/configs/1.21.txt", "black"),
+    ("delta", "⚫ Delta-Kronecker — все конфиги", "Delta-Kronecker/V2ray-Config/main/config/all_configs.txt", "black"),
+    ("radikal", "⚫ 0xRadikal — все конфиги", "0xRadikal/Free-v2ray-Configs/main/all/configs.txt", "black"),
+    ("matin", "⚫ MatinGhanbari — супер-подписка", "MatinGhanbari/v2ray-configs/main/subscriptions/v2ray/super-sub.txt", "black"),
+]
+
+
+def make_extra_list(source_id, display_name, path, list_type):
+    """Запись источника в формате каталога (ключ — source_id + имя файла)."""
+    filename = path.rsplit("/", 1)[-1]
+    return {
+        f"{source_id}_{filename}": {
+            "name": display_name,
+            "url": f"https://raw.githack.com/{path}",
+            "type": list_type,
+            "source": source_id,
+        }
+    }
+
+
+EXTRA_FALLBACK_LISTS = {}
+for _source_id, _display, _path, _kind in EXTRA_SOURCES:
+    EXTRA_FALLBACK_LISTS.update(make_extra_list(_source_id, _display, _path, _kind))
 
 
 def list_source(info):
@@ -136,12 +195,59 @@ def fetch_goida_lists():
 
 
 async def fetch_dynamic_lists():
-    """Объединяет источники с независимым резервным списком для каждого."""
+    """Объединяет источники с независимым резервным списком для каждого.
+
+    igareck и Goida обнаруживаются через GitHub API (список файлов меняется),
+    дополнительные источники заданы статически в EXTRA_SOURCES: их набор
+    стабилен, а лишний API-запрос на каждый репозиторий упирался бы в лимит
+    GitHub (60 запросов/час без токена).
+    """
     igareck, goida = await asyncio.gather(
         asyncio.to_thread(fetch_igareck_lists), asyncio.to_thread(fetch_goida_lists))
     lists = dict(igareck)
     lists.update(goida)
+    lists.update(EXTRA_FALLBACK_LISTS)
     return lists
+
+
+def decode_subscription_bytes(raw):
+    """Байты подписки → текст, устойчиво к не-UTF-8 мусору.
+
+    Часть публичных файлов содержит одиночные байты в другой кодировке
+    (например, cp1251 в remark). Строгий decode ронял весь файл целиком:
+    источник с тысячами конфигураций молча пропадал из-за одного байта,
+    поэтому ошибки заменяются, а не прерывают разбор.
+    """
+    return raw.decode("utf-8-sig", errors="replace")
+
+
+def parse_subscription_text(text):
+    """Извлекает URI из тела подписки: обычный текст или base64.
+
+    Часть публичных источников отдаёт подписку целиком в base64
+    (Epodonios/Splitted-By-Protocol, MatinGhanbari): без декодирования такой
+    файл выглядит непустым, но даёт ноль URI и молча теряется. Сначала
+    пробуем обычный текст — он дешевле и покрывает большинство источников;
+    base64 разбираем только если в тексте не нашлось ни одного URI.
+
+    Возвращает (tuple_uri, режим), где режим — "plain", "base64" или "empty".
+    """
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    plain = tuple(line for line in lines if line.startswith(URI_PREFIXES))
+    if plain:
+        return plain, "plain"
+    # Склеиваем без пробелов: подписки приходят и с переносами внутри base64.
+    body = "".join(lines)
+    if not body:
+        return (), "empty"
+    padded = body + "=" * ((4 - len(body) % 4) % 4)
+    try:
+        decoded = base64.b64decode(padded, validate=False).decode("utf-8", errors="replace")
+    except Exception:
+        return (), "empty"
+    uris = tuple(line.strip() for line in decoded.splitlines()
+                 if line.strip().startswith(URI_PREFIXES))
+    return uris, "base64" if uris else "empty"
 
 
 def download_catalog_file(info, previous=None):
@@ -165,9 +271,9 @@ def download_catalog_file(info, previous=None):
                 if not chunk:
                     break
                 chunks.append(chunk)
-            uris = tuple(line.strip() for line in b''.join(chunks).decode('utf-8-sig').splitlines()
-                         if line.strip().startswith(URI_PREFIXES))
-            return {"info": info, "uris": uris, "etag": response.headers.get("ETag"),
+            uris, mode = parse_subscription_text(decode_subscription_bytes(b''.join(chunks)))
+            return {"info": info, "uris": uris, "encoding": mode,
+                    "etag": response.headers.get("ETag"),
                     "last_modified": response.headers.get("Last-Modified"), "error": None,
                     "fetched_at": time.time(), "stale": False}
     except Exception as exc:

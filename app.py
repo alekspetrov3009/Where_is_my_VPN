@@ -32,7 +32,8 @@ from storage import (STABLE_CHECKS, load_config, save_config, get_saved_singbox_
                      save_check_schedule, load_pool, save_pool as _save_pool_state)
 from singbox_manager import (find_singbox as _find_singbox, run_singbox_version,
                              download_singbox as _download_singbox)
-from catalog import (FALLBACK_LISTS, GOIDA_FALLBACK_LISTS, SOURCE_LABELS, list_source,
+from catalog import (FALLBACK_LISTS, GOIDA_FALLBACK_LISTS, EXTRA_FALLBACK_LISTS,
+                     SOURCE_LABELS, list_source,
                      fetch_dynamic_lists, get_source_catalog, catalog_summary,
                      catalog_update_loop, canonical_endpoint, SOURCE_CATALOG)
 from prober import (TEST_URL, TEST_URL_FALLBACK, CHECK_TIMEOUT, FAST_CHECK_TIMEOUT,
@@ -73,7 +74,7 @@ auto_update_settings = {
 }
 
 # Изначально заполняем резервными списками, они будут обновлены при старте
-AVAILABLE_LISTS = {**FALLBACK_LISTS, **GOIDA_FALLBACK_LISTS}
+AVAILABLE_LISTS = {**FALLBACK_LISTS, **GOIDA_FALLBACK_LISTS, **EXTRA_FALLBACK_LISTS}
 
 # Статистика последней проверки по типам ошибок и протоколам (для диагностики
 # различий между хостами, напр. Windows Server 2022 vs обычный ПК).

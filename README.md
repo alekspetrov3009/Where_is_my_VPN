@@ -7,7 +7,8 @@
 ## 🚀 Ключевые возможности
 
 - **Автоматическое обновление:** Фоновая проверка списков с настраиваемым интервалом (по умолчанию каждые 60 секунд).
-- **Динамическая загрузка:** Автоматический поиск `.txt` файлов с конфигурациями в целевом GitHub-репозитории и их категоризация (⚫ Чёрный список / ⚪ Белый список).
+- **Динамическая загрузка:** Автоматический поиск `.txt` файлов с конфигурациями и их категоризация (⚫ Чёрный список / ⚪ Белый список). Поддерживаются подписки в обычном тексте и в base64.
+- **Много источников:** igareck (РФ), Epodonios, barry-far, SoliSpirit, Argh94, Anti-RKN, Delta-Kronecker, 0xRadikal, MatinGhanbari — около 37 000 уникальных конфигураций после дедупликации по конечной точке. Каждый источник проверен вручную: часть репозиториев содержит только README, а некоторые файлы названы неверно (`ShadowSocks.txt` у Argh94 наполнен vless/vmess).
 - **Параллельная проверка:** Многопоточное тестирование конфигураций через `sing-box` с умным распределением свободных портов (исключает конфликты `address already in use`).
 - **Портативность:** Полностью автономный дистрибутив (`Where is my VPN.exe`), не требующий установки Python и не оставляющий следов в реестре или `AppData`.
 - **Один ключ с автопереключением:** Endpoint [`/api/onekey`](app.py) отдаёт подписку из лучших стабильных серверов. Форматы: base64-список URI (универсальный для v2rayNG, Nekoray, Streisand, Hiddify) — по умолчанию; sing-box JSON с `urltest` — при `?format=json` или User-Agent sing-box/SFA/SFI/SFM/SFT/Hiddify; **Clash/Mihomo YAML** — при `?format=clash` или User-Agent clash/mihomo (Clash Verge, FlClash, Stash). Кнопка «🔑 Один ключ» на публичной странице даёт ссылки и QR-код.
@@ -46,6 +47,7 @@
 ├── test_validation.py              # Тесты допуска в пул (6 предсуществующих падений)
 ├── test_dpi_hardening.py           # Тесты парсеров, детектора перехвата и схем sing-box
 ├── test_export_geo.py              # Тесты Clash YAML, QUIC-зонда и геопроверки
+├── test_sources.py                 # Тесты разбора подписок и реестра источников
 │
 ├── index.html                      # Фронтенд: Публичная страница для пользователей
 ├── admin.html                      # Фронтенд: Интерфейс панели администратора
@@ -132,10 +134,10 @@ python app.py
 ### Проверка работоспособности
 
 ```bat
-python -m unittest test_check_scheduling test_validation test_dpi_hardening test_export_geo
+python -m unittest test_check_scheduling test_validation test_dpi_hardening test_export_geo test_sources
 ```
 
-6 падений в `test_validation.py` — предсуществующие (описаны в [AGENTS.md](AGENTS.md)), на работу приложения не влияют. `test_dpi_hardening.py` проверяет парсеры hysteria2/tuic, детектор перехвата и схему конфигов через настоящий `sing-box check`. `test_export_geo.py` — генерацию Clash YAML (разбирается PyYAML, если установлен), QUIC-зонд и геопроверку с подставным API. Оба новых файла не требуют сети.
+6 падений в `test_validation.py` — предсуществующие (описаны в [AGENTS.md](AGENTS.md)), на работу приложения не влияют. `test_dpi_hardening.py` проверяет парсеры hysteria2/tuic, детектор перехвата и схему конфигов через настоящий `sing-box check`. `test_export_geo.py` — генерацию Clash YAML (разбирается PyYAML, если установлен), QUIC-зонд и геопроверку с подставным API. `test_sources.py` — разбор подписок (текст/base64, устойчивость к не-UTF-8) и инварианты реестра источников. Новые файлы не требуют сети.
 
 ---
 
