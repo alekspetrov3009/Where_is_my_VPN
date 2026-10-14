@@ -19,9 +19,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Код и статика
-COPY app.py config.py paths.py storage.py catalog.py prober.py \
-     config_parser.py check_scheduler.py singbox_manager.py ./
+# Код и статика.
+# Модули копируются маской, а не списком: при добавлении нового файла
+# (clash_export.py, geoip.py) перечисление по именам забывали обновить, и
+# контейнер падал с ModuleNotFoundError уже после сборки. Тесты и прочие
+# *.py в образ не нужны — их отсекает .dockerignore.
+COPY *.py ./
 COPY index.html admin.html ./
 
 # sing-box: если в репозитории нет linux-бинарника — скачиваем с GitHub

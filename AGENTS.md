@@ -42,6 +42,7 @@
 - `deploy.sh --update` downloads the main-branch archive with host `curl` and unpacks it over the current folder, preserving `.env`, `sing-box-bin/` and pool files. This is the supported update path when GitHub is unreachable *from containers* but works from the host — a common DPI setup.
 - Mode is auto-detected: a valid ELF at `sing-box-bin/sing-box` forces local build, because GitHub-mode would clone the repo and re-download the binary (minutes of waiting, then failure, on networks without GitHub). The check reads the ELF magic bytes, not `./sing-box version` — deploy.sh also runs under Git Bash on Windows, where ELF cannot execute. `--github` disables the switch.
 - `.dockerignore` excludes only `sing-box-bin/sing-box.exe` (Windows), so a linux `sing-box-bin/sing-box` does reach the image.
+- The Dockerfile copies modules with `COPY *.py ./`, not an explicit list. A hand-maintained list was forgotten when `clash_export.py` and `geoip.py` were added, and the container died at startup with `ModuleNotFoundError: No module named 'clash_export'` — the build itself succeeded, so the failure only surfaced in the logs. Keep the glob; `test_*.py` is excluded by `.dockerignore`. New modules must not add third-party imports without updating `requirements.txt` (`clash_export.py` and `geoip.py` are stdlib-only by design).
 
 ## Run
 
